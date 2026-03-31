@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>共享挑战日历</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+      --shadow-strong: 0 14px 36px rgba(15, 23, 42, 0.1);
+      --accent: #111827;
+      --soft: #f8fafc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .title h1 {
+      margin: 0 0 6px;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+
+    .title p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button,
+    select,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    select {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    button:hover,
+    select:hover {
+      opacity: 0.96;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(235px, 0.62fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--card);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .calendar-panel {
+      padding: 18px;
+      box-shadow: var(--shadow-strong);
+    }
+
+    .side-panel {
+      padding: 14px;
+      position: sticky;
+      top: 16px;
+      align-self: start;
+    }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .panel-title h2,
+    .panel-title h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .month-title {
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .weekday-row,
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+
+    .weekday {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 0;
+    }
+
+    .day {
+      min-height: 108px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 10px;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      overflow: hidden;
+    }
+
+    .day:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    .day.other-month {
+      opacity: 0.35;
+      background: #f9fafb;
+    }
+
+    .day.today {
+      outline: 2px solid #111827;
+      outline-offset: -2px;
+    }
+
+    .date-number {
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .entry-label {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 28px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: 999px;
+      padding: 4px 7px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      backdrop-filter: blur(6px);
+    }
+
+    .entry-note {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      font-size: 10px;
+      color: #374151;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: rgba(255, 255, 255, 0.65);
+      border-radius: 8px;
+      padding: 3px 6px;
+    }
+
+    .year-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .mini-month {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .mini-month:hover {
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+    }
+
+    .mini-month-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .mini-weekdays,
+    .mini-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+
+    .mini-weekdays div {
+      text-align: center;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .mini-day {
+      aspect-ratio: 1 / 1;
+      border-radius: 6px;
+      border: 1px solid #f1f5f9;
+      background: #fff;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: #334155;
+      user-select: none;
+    }
+
+    .mini-day.empty {
+      visibility: hidden;
+    }
+
+    .mini-day-number {
+      position: relative;
+      z-index: 1;
+      font-weight: 600;
+    }
+
+    .legend-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .legend-item {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px;
+      background: #fafafa;
+    }
+
+    .legend-color {
+      width: 28px;
+      height: 28px;
+      border: none;
+      padding: 0;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .legend-main {
+      min-width: 0;
+    }
+
+    .legend-input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 8px;
+      font-size: 12px;
+      background: #fff;
+      margin-bottom: 4px;
+    }
+
+    .legend-count {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fafafa;
+      padding: 12px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 2px;
+    }
+
+    .banner {
+      margin-top: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .auth-card {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--soft);
+      padding: 10px;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .auth-input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: #fff;
+      font-size: 13px;
+    }
+
+    .auth-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+
+    .auth-status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 999;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 560px;
+      background: white;
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+    }
+
+    .selected-date {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .option {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 11px;
+      cursor: pointer;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      background: white;
+    }
+
+    .option:hover {
+      background: #f9fafb;
+    }
+
+    .swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      flex: 0 0 26px;
+    }
+
+    .note-box {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      min-height: 92px;
+      padding: 10px 12px;
+      font-size: 14px;
+      resize: vertical;
+      font-family: inherit;
+      margin-top: 8px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .side-panel {
+        position: static;
+      }
+
+      .year-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 760px) {
+      .wrap {
+        padding: 14px;
+      }
+
+      .title h1 {
+        font-size: 24px;
+      }
+
+      .month-title {
+        font-size: 20px;
+      }
+
+      .day {
+        min-height: 78px;
+        padding: 8px;
+      }
+
+      .entry-label {
+        font-size: 10px;
+        bottom: 24px;
+      }
+
+      .entry-note {
+        font-size: 9px;
+      }
+
+      .option-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .year-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>共享挑战日历</h1>
+        <p>支持月视图、年视图、备注、统计和 Firebase 实时同步。所有打开同一链接的人看到的是同一份数据。</p>
+      </div>
+
+      <div class="toolbar">
+        <button id="monthViewBtn" class="primary">月视图</button>
+        <button id="yearViewBtn">年视图</button>
+        <button id="prevBtn">上一个</button>
+        <button id="todayBtn">今天</button>
+        <button id="nextBtn">下一个</button>
+        <select id="yearSelect"></select>
+        <select id="monthSelect"></select>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="panel calendar-panel">
+        <div class="panel-title">
+          <div class="month-title" id="mainTitle"></div>
+          <div class="small">今天会显示黑色边框</div>
+        </div>
+
+        <div id="monthView">
+          <div class="weekday-row">
+            <div class="weekday">日</div>
+            <div class="weekday">一</div>
+            <div class="weekday">二</div>
+            <div class="weekday">三</div>
+            <div class="weekday">四</div>
+            <div class="weekday">五</div>
+            <div class="weekday">六</div>
+          </div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+
+        <div id="yearView" style="display:none;">
+          <div class="year-grid" id="yearGrid"></div>
+        </div>
+      </div>
+
+      <div class="panel side-panel">
+        <div class="panel-title">
+          <h2>记录类型</h2>
+          <span class="small">右栏更窄</span>
+        </div>
+
+        <div class="small">你可以修改颜色和名称。左边日历区域更大、更突出。未登录时只能查看。</div>
+
+        <div class="legend-list" id="legendList"></div>
+
+        <div class="stats">
+          <div class="stat">
+            <strong id="rangeCount">0</strong>
+            <span class="small" id="rangeLabel">当前范围已记录</span>
+          </div>
+          <div class="stat">
+            <strong id="totalCount">0</strong>
+            <span class="small">总记录天数</span>
+          </div>
+        </div>
+
+        <div class="auth-card">
+          <div style="font-weight:700; font-size:14px;">登录</div>
+          <div class="small" style="margin-top:4px;">登录后才能修改颜色、备注和标签；未登录时只读。</div>
+
+          <div class="auth-form">
+            <input id="emailInput" class="auth-input" type="email" placeholder="邮箱" />
+            <input id="passwordInput" class="auth-input" type="password" placeholder="密码（至少6位）" />
+
+            <div class="auth-actions">
+              <button id="loginBtn" class="primary" type="button">登录</button>
+              <button id="registerBtn" type="button">注册</button>
+              <button id="logoutBtn" type="button" style="display:none;">退出</button>
+            </div>
+          </div>
+
+          <div class="auth-status" id="authStatus">当前未登录</div>
+        </div>
+
+        <div class="banner">
+          年视图现在会显示具体日期数字，危险的清空按钮已经移除。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-card">
+      <div class="selected-date" id="selectedDateText"></div>
+      <div class="small">点击颜色来设置当天记录，再输入备注。</div>
+
+      <div class="option-grid" id="optionGrid"></div>
+
+      <div class="small" style="margin-top:4px;">备注</div>
+      <textarea id="noteInput" class="note-box" placeholder="写一点备注，例如：今天完成得不错 / 只做了一半 / 和朋友一起完成"></textarea>
+
+      <div class="modal-actions">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="saveNoteBtn" class="primary">保存备注</button>
+          <button id="clearDayBtn">清空这一天</button>
+        </div>
+        <button id="closeModalBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import {
+      getAuth,
+      setPersistence,
+      browserLocalPersistence,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "YOUR_MEASUREMENT_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const docRef = doc(db, "calendar", "shared");
+
+    const DEFAULT_STATE = {
+      legends: [
+        { id: "red", color: "#f87171", label: "挑战 A" },
+        { id: "orange", color: "#fb923c", label: "挑战 B" },
+        { id: "yellow", color: "#facc15", label: "挑战 C" },
+        { id: "green", color: "#4ade80", label: "挑战 D" },
+        { id: "blue", color: "#60a5fa", label: "挑战 E" },
+        { id: "purple", color: "#c084fc", label: "挑战 F" }
+      ],
+      entries: {}
+    };
+
+    let state = structuredClone(DEFAULT_STATE);
+    let currentDate = new Date();
+    let currentView = "month";
+    let selectedDateKey = null;
+    let currentUser = null;
+
+    const mainTitle = document.getElementById("mainTitle");
+    const calendarGrid = document.getElementById("calendarGrid");
+    const yearGrid = document.getElementById("yearGrid");
+    const legendList = document.getElementById("legendList");
+    const rangeCount = document.getElementById("rangeCount");
+    const totalCount = document.getElementById("totalCount");
+    const rangeLabel = document.getElementById("rangeLabel");
+    const yearSelect = document.getElementById("yearSelect");
+    const monthSelect = document.getElementById("monthSelect");
+    const monthView = document.getElementById("monthView");
+    const yearView = document.getElementById("yearView");
+    const modal = document.getElementById("modal");
+    const selectedDateText = document.getElementById("selectedDateText");
+    const optionGrid = document.getElementById("optionGrid");
+    const noteInput = document.getElementById("noteInput");
+
+    const emailInput = document.getElementById("emailInput");
+    const passwordInput = document.getElementById("passwordInput");
+    const loginBtn = document.getElementById("loginBtn");
+    const registerBtn = document.getElementById("registerBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const authStatus = document.getElementById("authStatus");
+
+    document.getElementById("monthViewBtn").addEventListener("click", () => {
+      currentView = "month";
+      render();
+    });
+
+    document.getElementById("yearViewBtn").addEventListener("click", () => {
+      currentView = "year";
+      render();
+    });
+
+    document.getElementById("prevBtn").addEventListener("click", () => {
+      if (currentView === "month") {
+        currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+      } else {
+        currentDate = new Date(currentDate.getFullYear() - 1, 0, 1);
+      }
+      render();
+    });
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      if (currentView === "month") {
+        currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      } else {
+        currentDate = new Date(currentDate.getFullYear() + 1, 0, 1);
+      }
+      render();
+    });
+
+    document.getElementById("todayBtn").addEventListener("click", () => {
+      currentDate = new Date();
+      currentView = "month";
+      render();
+    });
+
+    yearSelect.addEventListener("change", () => {
+      currentDate = new Date(Number(yearSelect.value), currentDate.getMonth(), 1);
+      render();
+    });
+
+    monthSelect.addEventListener("change", () => {
+      currentDate = new Date(currentDate.getFullYear(), Number(monthSelect.value), 1);
+      render();
+    });
+
+    document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    loginBtn.addEventListener("click", async () => {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        authStatus.textContent = "请输入邮箱和密码";
+        return;
+      }
+
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+        await signInWithEmailAndPassword(auth, email, password);
+        authStatus.textContent = "登录成功";
+      } catch (err) {
+        console.error("login failed:", err);
+        authStatus.textContent = "登录失败：" + (err.message || err.code || "未知错误");
+      }
+    });
+
+    registerBtn.addEventListener("click", async () => {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        authStatus.textContent = "请输入邮箱和密码";
+        return;
+      }
+
+      if (password.length < 6) {
+        authStatus.textContent = "密码至少需要 6 位";
+        return;
+      }
+
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+        await createUserWithEmailAndPassword(auth, email, password);
+        authStatus.textContent = "注册成功";
+      } catch (err) {
+        console.error("register failed:", err);
+        authStatus.textContent = "注册失败：" + (err.message || err.code || "未知错误");
+      }
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await signOut(auth);
+        authStatus.textContent = "已退出登录";
+      } catch (err) {
+        console.error("logout failed:", err);
+        authStatus.textContent = "退出失败：" + (err.message || err.code || "未知错误");
+      }
+    });
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user || null;
+      updateAuthUI();
+      render();
+    });
+
+    function updateAuthUI() {
+      if (currentUser) {
+        authStatus.textContent = `已登录：${currentUser.email}`;
+        logoutBtn.style.display = "inline-block";
+      } else {
+        authStatus.textContent = "当前未登录";
+        logoutBtn.style.display = "none";
+      }
+    }
+
+    document.getElementById("saveNoteBtn").addEventListener("click", async () => {
+      if (!currentUser) {
+        alert("请先登录后再修改");
+        return;
+      }
+      if (!selectedDateKey) return;
+
+      if (!state.entries[selectedDateKey]) {
+        state.entries[selectedDateKey] = { legendId: null, note: noteInput.value.trim() };
+      } else {
+        state.entries[selectedDateKey].note = noteInput.value.trim();
+      }
+
+      await saveState();
+      closeModal();
+    });
+
+    document.getElementById("clearDayBtn").addEventListener("click", async () => {
+      if (!currentUser) {
+        alert("请先登录后再修改");
+        return;
+      }
+      if (!selectedDateKey) return;
+      delete state.entries[selectedDateKey];
+      await saveState();
+      closeModal();
+    });
+
+    function getMonthPrefix(year, month) {
+      return `${year}-${String(month + 1).padStart(2, "0")}-`;
+    }
+
+    function getDateKey(date) {
+      return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0")
+      ].join("-");
+    }
+
+    function formatDateKey(dateKey) {
+      const [y, m, d] = dateKey.split("-");
+      return `${y}年${Number(m)}月${Number(d)}日`;
+    }
+
+    function getEntry(dateKey) {
+      return state.entries[dateKey] || null;
+    }
+
+    function getLegendById(id) {
+      return state.legends.find((l) => l.id === id) || null;
+    }
+
+    async function saveState() {
+      try {
+        await setDoc(docRef, state);
+      } catch (err) {
+        console.error("saveState failed:", err);
+        alert("保存失败，请检查 Firebase 配置、Auth 和 Firestore Rules。");
+      }
+    }
+
+    async function ensureDocExists() {
+      try {
+        const snap = await getDoc(docRef);
+        if (!snap.exists()) {
+          await setDoc(docRef, DEFAULT_STATE);
+        }
+      } catch (err) {
+        console.error("Firestore init error:", err);
+      }
+    }
+
+    function buildSelects() {
+      const baseYear = new Date().getFullYear();
+      yearSelect.innerHTML = "";
+      for (let y = baseYear - 5; y <= baseYear + 5; y++) {
+        const op = document.createElement("option");
+        op.value = y;
+        op.textContent = `${y}年`;
+        if (y === currentDate.getFullYear()) op.selected = true;
+        yearSelect.appendChild(op);
+      }
+
+      monthSelect.innerHTML = "";
+      for (let m = 0; m < 12; m++) {
+        const op = document.createElement("option");
+        op.value = m;
+        op.textContent = `${m + 1}月`;
+        if (m === currentDate.getMonth()) op.selected = true;
+        monthSelect.appendChild(op);
+      }
+    }
+
+    function openModal(dateKey) {
+      selectedDateKey = dateKey;
+      selectedDateText.textContent = formatDateKey(dateKey);
+
+      const currentEntry = getEntry(dateKey);
+      noteInput.value = currentEntry?.note || "";
+
+      optionGrid.innerHTML = "";
+
+      state.legends.forEach((legend) => {
+        const item = document.createElement("div");
+        item.className = "option";
+        item.innerHTML = `
+          <div class="swatch" style="background:${legend.color}"></div>
+          <div>
+            <div style="font-weight:700;">${escapeHtml(legend.label)}</div>
+            <div class="small">总共 ${getLegendTotalCount(legend.id)} 次</div>
+          </div>
+        `;
+
+        item.addEventListener("click", async () => {
+          if (!currentUser) {
+            alert("请先登录后再修改");
+            return;
+          }
+          const oldNote = state.entries[dateKey]?.note || "";
+          state.entries[dateKey] = {
+            legendId: legend.id,
+            note: oldNote
+          };
+          await saveState();
+          noteInput.value = oldNote;
+        });
+
+        optionGrid.appendChild(item);
+      });
+
+      modal.classList.add("show");
+    }
+
+    function closeModal() {
+      modal.classList.remove("show");
+      selectedDateKey = null;
+    }
+
+    function getLegendTotalCount(legendId) {
+      return Object.values(state.entries).filter((entry) => entry?.legendId === legendId).length;
+    }
+
+    function getLegendRangeCount(legendId) {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      if (currentView === "month") {
+        const prefix = getMonthPrefix(year, month);
+        return Object.entries(state.entries).filter(([key, entry]) => key.startsWith(prefix) && entry?.legendId === legendId).length;
+      }
+
+      const yearPrefix = `${year}-`;
+      return Object.entries(state.entries).filter(([key, entry]) => key.startsWith(yearPrefix) && entry?.legendId === legendId).length;
+    }
+
+    function renderLegendEditor() {
+      legendList.innerHTML = "";
+
+      state.legends.forEach((legend) => {
+        const row = document.createElement("div");
+        row.className = "legend-item";
+
+        const color = document.createElement("input");
+        color.type = "color";
+        color.className = "legend-color";
+        color.value = legend.color;
+        color.disabled = !currentUser;
+
+        const main = document.createElement("div");
+        main.className = "legend-main";
+
+        const input = document.createElement("input");
+        input.className = "legend-input";
+        input.value = legend.label;
+        input.disabled = !currentUser;
+
+        const count = document.createElement("div");
+        count.className = "legend-count";
+        count.textContent = `当前 ${getLegendRangeCount(legend.id)} 次 / 总共 ${getLegendTotalCount(legend.id)} 次`;
+
+        color.addEventListener("input", async () => {
+          if (!currentUser) return;
+          legend.color = color.value;
+          await saveState();
+        });
+
+        input.addEventListener("change", async () => {
+          if (!currentUser) return;
+          legend.label = input.value.trim() || "未命名";
+          await saveState();
+        });
+
+        main.appendChild(input);
+        main.appendChild(count);
+
+        row.appendChild(color);
+        row.appendChild(main);
+        legendList.appendChild(row);
+      });
+    }
+
+    function renderMonthView() {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      mainTitle.textContent = `${year}年 ${month + 1}月`;
+      calendarGrid.innerHTML = "";
+
+      const firstDay = new Date(year, month, 1);
+      const startWeekday = firstDay.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const daysInPrevMonth = new Date(year, month, 0).getDate();
+      const todayKey = getDateKey(new Date());
+
+      for (let i = 0; i < 42; i++) {
+        let dayNum;
+        let cellDate;
+        let otherMonth = false;
+
+        if (i < startWeekday) {
+          dayNum = daysInPrevMonth - startWeekday + i + 1;
+          cellDate = new Date(year, month - 1, dayNum);
+          otherMonth = true;
+        } else if (i >= startWeekday + daysInMonth) {
+          dayNum = i - (startWeekday + daysInMonth) + 1;
+          cellDate = new Date(year, month + 1, dayNum);
+          otherMonth = true;
+        } else {
+          dayNum = i - startWeekday + 1;
+          cellDate = new Date(year, month, dayNum);
+        }
+
+        const dateKey = getDateKey(cellDate);
+        const entry = getEntry(dateKey);
+        const legend = entry?.legendId ? getLegendById(entry.legendId) : null;
+
+        const day = document.createElement("div");
+        day.className = "day";
+        if (otherMonth) day.classList.add("other-month");
+        if (dateKey === todayKey) day.classList.add("today");
+        if (legend) day.style.background = legend.color;
+
+        day.innerHTML = `<div class="date-number">${dayNum}</div>`;
+
+        if (legend) {
+          const label = document.createElement("div");
+          label.className = "entry-label";
+          label.textContent = legend.label;
+          day.appendChild(label);
+        }
+
+        if (entry?.note) {
+          const note = document.createElement("div");
+          note.className = "entry-note";
+          note.textContent = entry.note;
+          day.appendChild(note);
+        }
+
+        day.addEventListener("click", () => openModal(dateKey));
+        calendarGrid.appendChild(day);
+      }
+    }
+
+    function renderMiniMonth(year, month) {
+      const box = document.createElement("div");
+      box.className = "mini-month";
+
+      const title = document.createElement("div");
+      title.className = "mini-month-title";
+      title.textContent = `${month + 1}月`;
+      box.appendChild(title);
+
+      const weekdays = document.createElement("div");
+      weekdays.className = "mini-weekdays";
+      ["日", "一", "二", "三", "四", "五", "六"].forEach((d) => {
+        const el = document.createElement("div");
+        el.textContent = d;
+        weekdays.appendChild(el);
+      });
+      box.appendChild(weekdays);
+
+      const days = document.createElement("div");
+      days.className = "mini-days";
+
+      const firstDay = new Date(year, month, 1);
+      const startWeekday = firstDay.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (let i = 0; i < startWeekday; i++) {
+        const empty = document.createElement("div");
+        empty.className = "mini-day empty";
+        days.appendChild(empty);
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(year, month, d);
+        const dateKey = getDateKey(date);
+        const entry = getEntry(dateKey);
+        const legend = entry?.legendId ? getLegendById(entry.legendId) : null;
+
+        const cell = document.createElement("div");
+        cell.className = "mini-day";
+        if (legend) cell.style.background = legend.color;
+
+        const number = document.createElement("div");
+        number.className = "mini-day-number";
+        number.textContent = d;
+        cell.appendChild(number);
+
+        cell.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openModal(dateKey);
+        });
+
+        days.appendChild(cell);
+      }
+
+      box.appendChild(days);
+
+      box.addEventListener("click", () => {
+        currentDate = new Date(year, month, 1);
+        currentView = "month";
+        render();
+      });
+
+      return box;
+    }
+
+    function renderYearView() {
+      const year = currentDate.getFullYear();
+      mainTitle.textContent = `${year}年 全年总览`;
+      yearGrid.innerHTML = "";
+      for (let m = 0; m < 12; m++) {
+        yearGrid.appendChild(renderMiniMonth(year, m));
+      }
+    }
+
+    function renderStats() {
+      const total = Object.keys(state.entries).length;
+      totalCount.textContent = total;
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      if (currentView === "month") {
+        const prefix = getMonthPrefix(year, month);
+        const count = Object.keys(state.entries).filter((k) => k.startsWith(prefix)).length;
+        rangeCount.textContent = count;
+        rangeLabel.textContent = "本月已记录";
+      } else {
+        const yearPrefix = `${year}-`;
+        const count = Object.keys(state.entries).filter((k) => k.startsWith(yearPrefix)).length;
+        rangeCount.textContent = count;
+        rangeLabel.textContent = "本年已记录";
+      }
+    }
+
+    function renderViewToggle() {
+      document.getElementById("monthViewBtn").classList.toggle("primary", currentView === "month");
+      document.getElementById("yearViewBtn").classList.toggle("primary", currentView === "year");
+
+      monthView.style.display = currentView === "month" ? "block" : "none";
+      yearView.style.display = currentView === "year" ? "block" : "none";
+      monthSelect.style.display = currentView === "month" ? "inline-block" : "none";
+    }
+
+    function render() {
+      if (!state || typeof state !== "object") {
+        state = structuredClone(DEFAULT_STATE);
+      }
+      if (!state.legends) state.legends = structuredClone(DEFAULT_STATE.legends);
+      if (!state.entries) state.entries = {};
+
+      buildSelects();
+      renderViewToggle();
+      renderLegendEditor();
+
+      if (currentView === "month") {
+        renderMonthView();
+      } else {
+        renderYearView();
+      }
+
+      renderStats();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    // 先画页面
+    render();
+
+    // 再异步初始化数据库
+    ensureDocExists().catch((err) => {
+      console.error("ensureDocExists failed:", err);
+    });
+
+    // 最后开启实时同步
+    onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          state = snap.data();
+          if (!state.legends) state.legends = structuredClone(DEFAULT_STATE.legends);
+          if (!state.entries) state.entries = {};
+          render();
+        }
+      },
+      (err) => {
+        console.error("onSnapshot failed:", err);
+      }
+    );
+  </script>
+</body>
+</html>
