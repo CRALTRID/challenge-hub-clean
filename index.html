@@ -352,15 +352,57 @@
       margin-bottom: 2px;
     }
 
-    .banner {
+    .save-status {
       margin-top: 12px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 10px;
+      min-height: 18px;
       font-size: 12px;
-      color: #475569;
-      line-height: 1.5;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .option.selected {
+      border-color: #111827;
+      box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
+      background: #f8fafc;
+    }
+
+    .option-text {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .option-check {
+      font-size: 12px;
+      font-weight: 700;
+      color: #111827;
+      white-space: nowrap;
+    }
+
+    .day.has-entry {
+      background: #f8fafc;
+    }
+
+    .day-accent {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    @media (max-width: 760px) {
+      .modal {
+        align-items: end;
+        padding: 0;
+      }
+
+      .modal-card {
+        max-width: none;
+        border-radius: 18px 18px 0 0;
+        padding-bottom: 24px;
+      }
     }
 
     .modal {
@@ -507,6 +549,7 @@
         <button id="yearViewBtn">年视图</button>
         <button id="prevBtn">上一个</button>
         <button id="todayBtn">今天</button>
+        <button id="thisYearBtn">今年</button>
         <button id="nextBtn">下一个</button>
         <select id="yearSelect"></select>
         <select id="monthSelect"></select>
@@ -559,6 +602,9 @@
           </div>
         </div>
 
+        <div class="save-status" id="saveStatus">数据已同步</div>
+      </div>
+
         
       </div>
     </div>
@@ -573,6 +619,8 @@
 
       <div class="small" style="margin-top:4px;">备注</div>
       <textarea id="noteInput" class="note-box" placeholder="写一点备注，例如：今天完成得不错 / 只做了一半 / 和朋友一起完成"></textarea>
+
+      <div class="small" id="lastUpdatedText" style="margin-top:10px;">最近更新：--</div>
 
       <div class="modal-actions">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -611,7 +659,8 @@
         { id: "blue", color: "#60a5fa", label: "挑战 E" },
         { id: "purple", color: "#c084fc", label: "挑战 F" }
       ],
-      entries: {}
+      entries: {},
+      updatedAt: null
     };
 
     let state = structuredClone(DEFAULT_STATE);
@@ -634,6 +683,8 @@
     const selectedDateText = document.getElementById("selectedDateText");
     const optionGrid = document.getElementById("optionGrid");
     const noteInput = document.getElementById("noteInput");
+    const saveStatus = document.getElementById("saveStatus");
+    const lastUpdatedText = document.getElementById("lastUpdatedText");
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
@@ -669,6 +720,13 @@
       render();
     });
 
+    document.getElementById("thisYearBtn").addEventListener("click", () => {
+      const now = new Date();
+      currentDate = new Date(now.getFullYear(), 0, 1);
+      currentView = "year";
+      render();
+    });
+
     yearSelect.addEventListener("change", () => {
       currentDate = new Date(Number(yearSelect.value), currentDate.getMonth(), 1);
       render();
@@ -700,6 +758,7 @@
 
     document.getElementById("clearDayBtn").addEventListener("click", async () => {
       if (!selectedDateKey) return;
+      if (!confirm(`确定要清空 ${formatDateKey(selectedDateKey)} 的记录吗？`)) return;
       delete state.entries[selectedDateKey];
       await saveState();
       closeModal();
@@ -730,11 +789,27 @@
       return state.legends.find((l) => l.id === id) || null;
     }
 
+    function setSaveStatus(message, isError = false) {
+      saveStatus.textContent = message;
+      saveStatus.style.color = isError ? "#b91c1c" : "var(--muted)";
+    }
+
+    function formatTimestamp(value) {
+      if (!value) return "--";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "--";
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    }
+
     async function saveState() {
       try {
+        setSaveStatus("保存中...");
+        state.updatedAt = new Date().toISOString();
         await setDoc(docRef, state);
+        setSaveStatus("已保存");
       } catch (err) {
         console.error("saveState failed:", err);
+        setSaveStatus("保存失败，请检查 Firebase 配置和 Firestore Rules。", true);
         alert("保存失败，请检查 Firebase 配置和 Firestore Rules。");
       }
     }
@@ -777,6 +852,7 @@
 
       const currentEntry = getEntry(dateKey);
       noteInput.value = currentEntry?.note || "";
+      lastUpdatedText.textContent = `最近更新：${formatTimestamp(state.updatedAt)}`;
 
       optionGrid.innerHTML = "";
 
