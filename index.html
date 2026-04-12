@@ -559,9 +559,7 @@
           </div>
         </div>
 
-        <div class="banner">
-          已移除登录限制。现在任何拿到链接的人，都能看到同一份数据并直接编辑。
-        </div>
+        
       </div>
     </div>
   </div>
@@ -801,6 +799,7 @@
           };
           await saveState();
           noteInput.value = oldNote;
+          closeModal();
         });
 
         optionGrid.appendChild(item);
@@ -1029,12 +1028,16 @@
     }
 
     function renderViewToggle() {
-      document.getElementById("monthViewBtn").classList.toggle("primary", currentView === "month");
-      document.getElementById("yearViewBtn").classList.toggle("primary", currentView === "year");
+      const monthBtn = document.getElementById("monthViewBtn");
+      const yearBtn = document.getElementById("yearViewBtn");
+
+      monthBtn.classList.toggle("primary", currentView === "month");
+      yearBtn.classList.toggle("primary", currentView === "year");
 
       monthView.style.display = currentView === "month" ? "block" : "none";
       yearView.style.display = currentView === "year" ? "block" : "none";
-      monthSelect.style.display = currentView === "month" ? "inline-block" : "none";
+      monthSelect.style.visibility = currentView === "month" ? "visible" : "hidden";
+      monthSelect.style.pointerEvents = currentView === "month" ? "auto" : "none";
     }
 
     function render() {
