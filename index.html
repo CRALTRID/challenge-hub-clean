@@ -797,9 +797,9 @@
             legendId: legend.id,
             note: oldNote
           };
-          await saveState();
           noteInput.value = oldNote;
           closeModal();
+          await saveState();
         });
 
         optionGrid.appendChild(item);
