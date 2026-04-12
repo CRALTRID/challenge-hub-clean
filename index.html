@@ -363,45 +363,6 @@
       line-height: 1.5;
     }
 
-    .auth-card {
-      margin-top: 14px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--soft);
-      padding: 10px;
-    }
-
-    .auth-form {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .auth-input {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 9px 10px;
-      background: #fff;
-      font-size: 13px;
-    }
-
-    .auth-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 6px;
-    }
-
-    .auth-status {
-      margin-top: 8px;
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.45;
-      word-break: break-word;
-    }
-
     .modal {
       position: fixed;
       inset: 0;
@@ -538,7 +499,7 @@
     <div class="topbar">
       <div class="title">
         <h1>共享挑战日历</h1>
-        <p>支持月视图、年视图、备注、统计和 Firebase 实时同步。所有打开同一链接的人看到的是同一份数据。</p>
+        <p>支持月视图、年视图、备注、统计和 Firebase 实时同步。所有打开同一链接的人看到的是同一份数据，也都可以直接修改。</p>
       </div>
 
       <div class="toolbar">
@@ -583,7 +544,7 @@
           <span class="small">右栏更窄</span>
         </div>
 
-        <div class="small">你可以修改颜色和名称。左边日历区域更大、更突出。未登录时只能查看。</div>
+        <div class="small">任何打开这个链接的人都可以直接查看和编辑。你可以修改颜色和名称。</div>
 
         <div class="legend-list" id="legendList"></div>
 
@@ -598,26 +559,8 @@
           </div>
         </div>
 
-        <div class="auth-card">
-          <div style="font-weight:700; font-size:14px;">登录</div>
-          <div class="small" style="margin-top:4px;">登录后才能修改颜色、备注和标签；未登录时只读。</div>
-
-          <div class="auth-form">
-            <input id="emailInput" class="auth-input" type="email" placeholder="邮箱" />
-            <input id="passwordInput" class="auth-input" type="password" placeholder="密码（至少6位）" />
-
-            <div class="auth-actions">
-              <button id="loginBtn" class="primary" type="button">登录</button>
-              <button id="registerBtn" type="button">注册</button>
-              <button id="logoutBtn" type="button" style="display:none;">退出</button>
-            </div>
-          </div>
-
-          <div class="auth-status" id="authStatus">当前未登录</div>
-        </div>
-
         <div class="banner">
-          年视图现在会显示具体日期数字，危险的清空按钮已经移除。
+          已移除登录限制。现在任何拿到链接的人，都能看到同一份数据并直接编辑。
         </div>
       </div>
     </div>
@@ -646,15 +589,6 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
-    import {
-      getAuth,
-      setPersistence,
-      browserLocalPersistence,
-      onAuthStateChanged,
-      signInWithEmailAndPassword,
-      createUserWithEmailAndPassword,
-      signOut
-    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "YOUR_API_KEY",
@@ -668,7 +602,6 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const auth = getAuth(app);
     const docRef = doc(db, "calendar", "shared");
 
     const DEFAULT_STATE = {
@@ -687,7 +620,6 @@
     let currentDate = new Date();
     let currentView = "month";
     let selectedDateKey = null;
-    let currentUser = null;
 
     const mainTitle = document.getElementById("mainTitle");
     const calendarGrid = document.getElementById("calendarGrid");
@@ -704,13 +636,6 @@
     const selectedDateText = document.getElementById("selectedDateText");
     const optionGrid = document.getElementById("optionGrid");
     const noteInput = document.getElementById("noteInput");
-
-    const emailInput = document.getElementById("emailInput");
-    const passwordInput = document.getElementById("passwordInput");
-    const loginBtn = document.getElementById("loginBtn");
-    const registerBtn = document.getElementById("registerBtn");
-    const logoutBtn = document.getElementById("logoutBtn");
-    const authStatus = document.getElementById("authStatus");
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
@@ -762,80 +687,7 @@
       if (e.target === modal) closeModal();
     });
 
-    loginBtn.addEventListener("click", async () => {
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
-
-      if (!email || !password) {
-        authStatus.textContent = "请输入邮箱和密码";
-        return;
-      }
-
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-        await signInWithEmailAndPassword(auth, email, password);
-        authStatus.textContent = "登录成功";
-      } catch (err) {
-        console.error("login failed:", err);
-        authStatus.textContent = "登录失败：" + (err.message || err.code || "未知错误");
-      }
-    });
-
-    registerBtn.addEventListener("click", async () => {
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
-
-      if (!email || !password) {
-        authStatus.textContent = "请输入邮箱和密码";
-        return;
-      }
-
-      if (password.length < 6) {
-        authStatus.textContent = "密码至少需要 6 位";
-        return;
-      }
-
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-        await createUserWithEmailAndPassword(auth, email, password);
-        authStatus.textContent = "注册成功";
-      } catch (err) {
-        console.error("register failed:", err);
-        authStatus.textContent = "注册失败：" + (err.message || err.code || "未知错误");
-      }
-    });
-
-    logoutBtn.addEventListener("click", async () => {
-      try {
-        await signOut(auth);
-        authStatus.textContent = "已退出登录";
-      } catch (err) {
-        console.error("logout failed:", err);
-        authStatus.textContent = "退出失败：" + (err.message || err.code || "未知错误");
-      }
-    });
-
-    onAuthStateChanged(auth, (user) => {
-      currentUser = user || null;
-      updateAuthUI();
-      render();
-    });
-
-    function updateAuthUI() {
-      if (currentUser) {
-        authStatus.textContent = `已登录：${currentUser.email}`;
-        logoutBtn.style.display = "inline-block";
-      } else {
-        authStatus.textContent = "当前未登录";
-        logoutBtn.style.display = "none";
-      }
-    }
-
     document.getElementById("saveNoteBtn").addEventListener("click", async () => {
-      if (!currentUser) {
-        alert("请先登录后再修改");
-        return;
-      }
       if (!selectedDateKey) return;
 
       if (!state.entries[selectedDateKey]) {
@@ -849,10 +701,6 @@
     });
 
     document.getElementById("clearDayBtn").addEventListener("click", async () => {
-      if (!currentUser) {
-        alert("请先登录后再修改");
-        return;
-      }
       if (!selectedDateKey) return;
       delete state.entries[selectedDateKey];
       await saveState();
@@ -889,7 +737,7 @@
         await setDoc(docRef, state);
       } catch (err) {
         console.error("saveState failed:", err);
-        alert("保存失败，请检查 Firebase 配置、Auth 和 Firestore Rules。");
+        alert("保存失败，请检查 Firebase 配置和 Firestore Rules。");
       }
     }
 
@@ -946,10 +794,6 @@
         `;
 
         item.addEventListener("click", async () => {
-          if (!currentUser) {
-            alert("请先登录后再修改");
-            return;
-          }
           const oldNote = state.entries[dateKey]?.note || "";
           state.entries[dateKey] = {
             legendId: legend.id,
@@ -998,7 +842,6 @@
         color.type = "color";
         color.className = "legend-color";
         color.value = legend.color;
-        color.disabled = !currentUser;
 
         const main = document.createElement("div");
         main.className = "legend-main";
@@ -1006,20 +849,17 @@
         const input = document.createElement("input");
         input.className = "legend-input";
         input.value = legend.label;
-        input.disabled = !currentUser;
 
         const count = document.createElement("div");
         count.className = "legend-count";
         count.textContent = `当前 ${getLegendRangeCount(legend.id)} 次 / 总共 ${getLegendTotalCount(legend.id)} 次`;
 
         color.addEventListener("input", async () => {
-          if (!currentUser) return;
           legend.color = color.value;
           await saveState();
         });
 
         input.addEventListener("change", async () => {
-          if (!currentUser) return;
           legend.label = input.value.trim() || "未命名";
           await saveState();
         });
@@ -1226,15 +1066,12 @@
         .replaceAll("'", "&#39;");
     }
 
-    // 先画页面
     render();
 
-    // 再异步初始化数据库
     ensureDocExists().catch((err) => {
       console.error("ensureDocExists failed:", err);
     });
 
-    // 最后开启实时同步
     onSnapshot(
       docRef,
       (snap) => {
