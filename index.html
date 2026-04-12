@@ -186,9 +186,7 @@
       outline-offset: -2px;
     }
 
-    .day.has-entry {
-      background: #f8fafc;
-    }
+    
 
     .day-accent {
       position: absolute;
@@ -581,7 +579,7 @@
       <div class="panel side-panel">
         <div class="panel-title">
           <h2>记录类型</h2>
-          <span class="small">右栏更窄</span>
+          
         </div>
 
         <div class="small">任何打开这个链接的人都可以直接查看和编辑。你可以修改颜色和名称。</div>
@@ -631,13 +629,13 @@
     import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
-      apiKey: "AIzaSyBhwkDkx_xCU51bd7owNF74FunoUec2KrY",
-      authDomain: "hfsex-a6114.firebaseapp.com",
-      projectId: "hfsex-a6114",
-      storageBucket: "hfsex-a6114.firebasestorage.app",
-      messagingSenderId: "35309193656",
-      appId: "1:35309193656:web:32871f89f8729de715e74d",
-      measurementId: "G-5EK9Q00F21"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "YOUR_MEASUREMENT_ID"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -982,15 +980,12 @@
         day.className = "day";
         if (otherMonth) day.classList.add("other-month");
         if (dateKey === todayKey) day.classList.add("today");
-        if (legend) day.classList.add("has-entry");
+        if (legend) day.style.background = legend.color;
 
         day.innerHTML = `<div class="date-number">${dayNum}</div>`;
 
         if (legend) {
-          const accent = document.createElement("div");
-          accent.className = "day-accent";
-          accent.style.background = legend.color;
-          day.appendChild(accent);
+          
 
           const label = document.createElement("div");
           label.className = "entry-label";
