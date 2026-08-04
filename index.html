@@ -37,6 +37,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
       background: var(--bg);
       color: var(--text);
+      transition: background-color 0.28s ease, color 0.28s ease;
     }
 
     html[data-theme="dark"] button,
@@ -77,6 +78,7 @@
       max-width: 1500px;
       margin: 0 auto;
       padding: 18px;
+      animation: pageEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
     .topbar {
@@ -129,7 +131,10 @@
 
     button {
       cursor: pointer;
+      transition: transform 0.14s ease, background-color 0.22s ease, border-color 0.22s ease, opacity 0.18s ease;
     }
+
+    button:active { transform: scale(0.96); }
 
     button.primary {
       background: var(--accent);
@@ -162,6 +167,7 @@
       border-radius: 18px;
       box-shadow: var(--shadow);
       padding: 16px;
+      transition: background-color 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
     }
 
     .calendar-panel {
@@ -240,8 +246,13 @@
       padding: 10px;
       position: relative;
       cursor: pointer;
-      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.25s ease, border-color 0.25s ease, opacity 0.2s ease;
       overflow: hidden;
+    }
+
+    .calendar-grid.animate-grid .day {
+      animation: dayEnter 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: calc(var(--i, 0) * 3ms);
     }
 
     .day:hover {
@@ -321,6 +332,11 @@
       padding: 10px;
       background: #fff;
       cursor: pointer;
+    }
+
+    .year-grid.animate-grid .mini-month {
+      animation: monthCardEnter 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+      animation-delay: calc(var(--i, 0) * 35ms);
     }
 
     .mini-month:hover {
@@ -582,6 +598,11 @@
 
     .modal.show {
       display: flex;
+      animation: modalBackdropEnter 0.2s ease both;
+    }
+
+    .modal.show .modal-card {
+      animation: modalCardEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
     .modal-card {
@@ -669,6 +690,40 @@
 
     .hidden {
       display: none !important;
+    }
+
+    @keyframes pageEnter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes dayEnter {
+      from { opacity: 0; transform: translateY(6px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes monthCardEnter {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes modalBackdropEnter {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes modalCardEnter {
+      from { opacity: 0; transform: translateY(18px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
 
     .filter-bar {
@@ -1094,6 +1149,7 @@
     let searchQuery = "";
     let filterLegendId = "";
     let pendingAverageLegendIds = [];
+    let animateCalendarNextRender = true;
 
     const mainTitle = document.getElementById("mainTitle");
     const monthAverageSummary = document.getElementById("monthAverageSummary");
@@ -1166,11 +1222,13 @@
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
+      animateCalendarNextRender = true;
       render();
     });
 
     document.getElementById("yearViewBtn").addEventListener("click", () => {
       currentView = "year";
+      animateCalendarNextRender = true;
       render();
     });
 
@@ -1180,6 +1238,7 @@
       } else {
         currentDate = new Date(currentDate.getFullYear() - 1, 0, 1);
       }
+      animateCalendarNextRender = true;
       render();
     });
 
@@ -1189,12 +1248,14 @@
       } else {
         currentDate = new Date(currentDate.getFullYear() + 1, 0, 1);
       }
+      animateCalendarNextRender = true;
       render();
     });
 
     document.getElementById("todayBtn").addEventListener("click", () => {
       currentDate = new Date();
       currentView = "month";
+      animateCalendarNextRender = true;
       render();
     });
 
@@ -1206,6 +1267,7 @@
       const now = new Date();
       currentDate = new Date(now.getFullYear(), 0, 1);
       currentView = "year";
+      animateCalendarNextRender = true;
       render();
     });
 
@@ -1249,11 +1311,13 @@
 
     yearSelect.addEventListener("change", () => {
       currentDate = new Date(Number(yearSelect.value), currentDate.getMonth(), 1);
+      animateCalendarNextRender = true;
       render();
     });
 
     monthSelect.addEventListener("change", () => {
       currentDate = new Date(currentDate.getFullYear(), Number(monthSelect.value), 1);
+      animateCalendarNextRender = true;
       render();
     });
 
@@ -2096,6 +2160,7 @@
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
       mainTitle.textContent = `${year}年 ${month + 1}月`;
+      calendarGrid.classList.toggle("animate-grid", animateCalendarNextRender);
       calendarGrid.innerHTML = "";
 
       const firstDay = new Date(year, month, 1);
@@ -2130,6 +2195,7 @@
 
         const day = document.createElement("div");
         day.className = "day";
+        day.style.setProperty("--i", i);
         if (otherMonth) day.classList.add("other-month");
         if (dateKey === todayKey) day.classList.add("today");
         if (entry && hasActiveFilter() && !entryMatchesFilter(entry)) day.classList.add("filtered-out");
@@ -2180,6 +2246,7 @@
     function renderMiniMonth(year, month) {
       const box = document.createElement("div");
       box.className = "mini-month";
+      box.style.setProperty("--i", month);
 
       const title = document.createElement("div");
       title.className = "mini-month-title";
@@ -2257,6 +2324,7 @@
       box.addEventListener("click", () => {
         currentDate = new Date(year, month, 1);
         currentView = "month";
+        animateCalendarNextRender = true;
         render();
       });
 
@@ -2266,6 +2334,7 @@
     function renderYearView() {
       const year = currentDate.getFullYear();
       mainTitle.textContent = `${year}年 全年总览`;
+      yearGrid.classList.toggle("animate-grid", animateCalendarNextRender);
       yearGrid.innerHTML = "";
       for (let m = 0; m < 12; m++) {
         yearGrid.appendChild(renderMiniMonth(year, m));
@@ -2425,6 +2494,7 @@
 
       renderStats();
       renderAverageStats();
+      animateCalendarNextRender = false;
     }
 
     function escapeHtml(str) {
