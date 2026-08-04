@@ -185,6 +185,12 @@
       background: #f9fafb;
     }
 
+    .day.filtered-out,
+    .mini-day.filtered-out {
+      opacity: 0.18;
+      filter: grayscale(0.7);
+    }
+
     .day.today {
       outline: 2px solid #111827;
       outline-offset: -2px;
@@ -529,6 +535,34 @@
       display: none !important;
     }
 
+    .filter-bar {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) minmax(150px, 220px) auto;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .filter-bar input,
+    .filter-bar select {
+      width: 100%;
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 52vh;
+      overflow: auto;
+      margin-top: 14px;
+    }
+
+    .history-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fafafa;
+    }
+
     @media (max-width: 1180px) {
       .layout {
         grid-template-columns: 1fr;
@@ -545,8 +579,20 @@
 
     @media (max-width: 760px) {
       .wrap {
-        padding: 14px;
+        padding: 8px;
       }
+
+      .topbar { gap: 10px; margin-bottom: 10px; }
+
+      .toolbar { gap: 6px; }
+
+      .toolbar button,
+      .toolbar select { padding: 8px 9px; }
+
+      .calendar-panel { padding: 9px; border-radius: 14px; }
+
+      .weekday-row,
+      .calendar-grid { gap: 3px; }
 
       .title h1 {
         font-size: 24px;
@@ -557,9 +603,14 @@
       }
 
       .day {
-        min-height: 78px;
-        padding: 8px;
+        min-height: 74px;
+        padding: 6px;
+        border-radius: 10px;
       }
+
+      .date-number { font-size: 13px; }
+
+      .entry-list { margin-top: 4px; gap: 2px; }
 
       .entry-label { font-size: 9px; padding: 3px 5px; }
 
@@ -582,9 +633,25 @@
 
       .modal-card {
         max-width: none;
+        max-height: 90vh;
+        overflow-y: auto;
         border-radius: 18px 18px 0 0;
         padding: 18px 18px 24px;
       }
+
+      .modal-actions {
+        position: sticky;
+        bottom: -24px;
+        background: #fff;
+        padding: 12px 0 6px;
+      }
+
+      .filter-bar {
+        grid-template-columns: 1fr 1fr;
+        margin-bottom: 10px;
+      }
+
+      .filter-bar input { grid-column: 1 / -1; }
     }
   </style>
 </head>
@@ -613,9 +680,19 @@
         <div class="panel-title">
           <div class="month-title" id="mainTitle"></div>
           <div class="sub-toolbar">
+            <button id="undoBtn">撤销修改</button>
+            <button id="historyBtn">修改记录</button>
+            <button id="importJsonBtn">导入备份</button>
             <button id="exportJsonBtn">导出 JSON</button>
             <button id="exportCsvBtn">导出 CSV</button>
+            <input id="importJsonInput" class="hidden" type="file" accept="application/json,.json" />
           </div>
+        </div>
+
+        <div class="filter-bar">
+          <input id="searchInput" type="search" placeholder="搜索任务名称或备注…" />
+          <select id="filterLegendSelect"><option value="">全部任务</option></select>
+          <button id="clearFilterBtn">清除筛选</button>
         </div>
 
         <div id="monthView">
@@ -656,7 +733,7 @@
           </div>
           <div class="stat">
             <strong id="totalCount">0</strong>
-            <span class="small">总记录天数</span>
+            <span class="small" id="totalLabel">总记录天数</span>
           </div>
         </div>
 
@@ -699,6 +776,18 @@
     </div>
   </div>
 
+  <div class="modal" id="historyModal">
+    <div class="modal-card">
+      <div class="selected-date">最近修改记录</div>
+      <div class="small">保存最近 20 次日期修改。撤销会同步到所有设备。</div>
+      <div class="history-list" id="historyList"></div>
+      <div class="modal-actions">
+        <button id="undoFromHistoryBtn" class="primary">撤销最近一次</button>
+        <button id="closeHistoryModalBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
@@ -728,8 +817,11 @@
         { id: "purple", color: "#c084fc", label: "挑战 F" }
       ],
       entries: {},
+      history: [],
       updatedAt: null
     };
+
+    const MAX_HISTORY = 20;
 
     let state = structuredClone(DEFAULT_STATE);
     let currentDate = new Date();
@@ -738,6 +830,8 @@
     let selectedLegendIds = [];
     let linkingLegendId = null;
     let pendingLinkedLegendIds = [];
+    let searchQuery = "";
+    let filterLegendId = "";
 
     const mainTitle = document.getElementById("mainTitle");
     const calendarGrid = document.getElementById("calendarGrid");
@@ -745,6 +839,7 @@
     const legendList = document.getElementById("legendList");
     const rangeCount = document.getElementById("rangeCount");
     const totalCount = document.getElementById("totalCount");
+    const totalLabel = document.getElementById("totalLabel");
     const rangeLabel = document.getElementById("rangeLabel");
     const yearSelect = document.getElementById("yearSelect");
     const monthSelect = document.getElementById("monthSelect");
@@ -759,6 +854,11 @@
     const linkModal = document.getElementById("linkModal");
     const linkModalTitle = document.getElementById("linkModalTitle");
     const linkOptionGrid = document.getElementById("linkOptionGrid");
+    const searchInput = document.getElementById("searchInput");
+    const filterLegendSelect = document.getElementById("filterLegendSelect");
+    const importJsonInput = document.getElementById("importJsonInput");
+    const historyModal = document.getElementById("historyModal");
+    const historyList = document.getElementById("historyList");
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
@@ -809,6 +909,32 @@
       exportCsv();
     });
 
+    document.getElementById("importJsonBtn").addEventListener("click", () => importJsonInput.click());
+    importJsonInput.addEventListener("change", importJsonBackup);
+
+    document.getElementById("undoBtn").addEventListener("click", undoLastChange);
+    document.getElementById("undoFromHistoryBtn").addEventListener("click", undoLastChange);
+    document.getElementById("historyBtn").addEventListener("click", openHistoryModal);
+    document.getElementById("closeHistoryModalBtn").addEventListener("click", closeHistoryModal);
+    historyModal.addEventListener("click", (e) => {
+      if (e.target === historyModal) closeHistoryModal();
+    });
+
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value.trim().toLowerCase();
+      render();
+    });
+    filterLegendSelect.addEventListener("change", () => {
+      filterLegendId = filterLegendSelect.value;
+      render();
+    });
+    document.getElementById("clearFilterBtn").addEventListener("click", () => {
+      searchQuery = "";
+      filterLegendId = "";
+      searchInput.value = "";
+      render();
+    });
+
     document.getElementById("addLegendBtn").addEventListener("click", async () => {
       await addLegend();
     });
@@ -846,6 +972,7 @@
     document.getElementById("saveNoteBtn").addEventListener("click", async () => {
       if (!selectedDateKey) return;
       const oldEntry = state.entries[selectedDateKey] || {};
+      const previousEntry = state.entries[selectedDateKey] ? structuredClone(state.entries[selectedDateKey]) : null;
       const entry = {
         ...oldEntry,
         legendId: selectedLegendIds[0] || null,
@@ -853,7 +980,7 @@
         note: noteInput.value.trim()
       };
       state.entries[selectedDateKey] = entry;
-      await saveDateEntry(selectedDateKey, entry);
+      await saveDateEntry(selectedDateKey, entry, previousEntry);
       closeModal();
     });
 
@@ -861,8 +988,9 @@
       if (!selectedDateKey) return;
       if (!confirm(`确定要清空 ${formatDateKey(selectedDateKey)} 的记录吗？`)) return;
       const dateKey = selectedDateKey;
+      const previousEntry = state.entries[dateKey] ? structuredClone(state.entries[dateKey]) : null;
       delete state.entries[dateKey];
-      await deleteDateEntry(dateKey);
+      await deleteDateEntry(dateKey, previousEntry);
       closeModal();
     });
 
@@ -904,6 +1032,33 @@
 
     function getLegendById(id) {
       return state.legends.find((l) => l.id === id) || null;
+    }
+
+    function hasActiveFilter() {
+      return Boolean(searchQuery || filterLegendId);
+    }
+
+    function getFilteredLegends(entry) {
+      if (!entry) return [];
+      let legends = getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
+      if (filterLegendId) legends = legends.filter((legend) => legend.id === filterLegendId);
+      if (!searchQuery) return legends;
+      const noteMatches = String(entry.note || "").toLowerCase().includes(searchQuery);
+      if (noteMatches) return legends;
+      return legends.filter((legend) => legend.label.toLowerCase().includes(searchQuery));
+    }
+
+    function entryMatchesFilter(entry) {
+      if (!hasActiveFilter()) return true;
+      if (!entry) return false;
+      const allLegends = getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
+      const eligibleLegends = filterLegendId
+        ? allLegends.filter((legend) => legend.id === filterLegendId)
+        : allLegends;
+      if (filterLegendId && !eligibleLegends.length) return false;
+      if (!searchQuery) return true;
+      return String(entry.note || "").toLowerCase().includes(searchQuery)
+        || eligibleLegends.some((legend) => legend.label.toLowerCase().includes(searchQuery));
     }
 
     function getLinkedLegendIds(legend) {
@@ -950,6 +1105,116 @@
       const payload = JSON.stringify(state, null, 2);
       const today = getDateKey(new Date());
       downloadFile(payload, `shared-calendar-${today}.json`, "application/json;charset=utf-8");
+    }
+
+    async function importJsonBackup(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const imported = JSON.parse(await file.text());
+        if (!imported || !Array.isArray(imported.legends) || !imported.entries || typeof imported.entries !== "object" || Array.isArray(imported.entries)) {
+          throw new Error("备份格式不正确");
+        }
+        const validLegends = imported.legends.every((legend) => legend && typeof legend.id === "string" && typeof legend.label === "string" && typeof legend.color === "string");
+        if (!validLegends) throw new Error("任务类型数据不完整");
+        if (!confirm(`将导入 ${Object.keys(imported.entries).length} 天记录和 ${imported.legends.length} 个任务类型。当前内容会被备份文件替换，确定继续吗？`)) return;
+
+        const updatedAt = new Date().toISOString();
+        const restoredState = {
+          ...state,
+          legends: structuredClone(imported.legends),
+          entries: structuredClone(imported.entries),
+          history: Array.isArray(state.history) ? state.history : [],
+          updatedAt
+        };
+        await setDoc(docRef, restoredState, { merge: true });
+        state = restoredState;
+        setSaveStatus("备份已导入，其他设备会自动同步");
+        render();
+      } catch (err) {
+        console.error("importJsonBackup failed:", err);
+        alert(`导入失败：${err.message || "无法读取备份文件"}`);
+      } finally {
+        importJsonInput.value = "";
+      }
+    }
+
+    function makeHistoryItem(action, dateKey, before, after) {
+      return {
+        id: `history_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        action,
+        dateKey,
+        before: before ? structuredClone(before) : null,
+        after: after ? structuredClone(after) : null,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    function appendHistory(item) {
+      const history = Array.isArray(state.history) ? state.history : [];
+      state.history = [...history, item].slice(-MAX_HISTORY);
+      return state.history;
+    }
+
+    function describeHistoryItem(item) {
+      const action = item.action === "delete" ? "清空" : "修改";
+      return `${action}了 ${formatDateKey(item.dateKey)}`;
+    }
+
+    function openHistoryModal() {
+      renderHistoryList();
+      historyModal.classList.add("show");
+    }
+
+    function closeHistoryModal() {
+      historyModal.classList.remove("show");
+    }
+
+    function renderHistoryList() {
+      historyList.innerHTML = "";
+      const history = Array.isArray(state.history) ? [...state.history].reverse() : [];
+      if (!history.length) {
+        historyList.innerHTML = '<div class="small">还没有可撤销的日期修改。</div>';
+      } else {
+        history.forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "history-item";
+          row.innerHTML = `<div style="font-weight:700;">${escapeHtml(describeHistoryItem(item))}</div><div class="small">${escapeHtml(formatTimestamp(item.timestamp))}</div>`;
+          historyList.appendChild(row);
+        });
+      }
+      const disabled = !history.length;
+      document.getElementById("undoBtn").disabled = disabled;
+      document.getElementById("undoFromHistoryBtn").disabled = disabled;
+    }
+
+    async function undoLastChange() {
+      const history = Array.isArray(state.history) ? state.history : [];
+      const item = history[history.length - 1];
+      if (!item) {
+        alert("还没有可以撤销的日期修改。");
+        return;
+      }
+      if (!confirm(`确定撤销“${describeHistoryItem(item)}”吗？`)) return;
+      try {
+        setSaveStatus("正在撤销...");
+        const updatedAt = new Date().toISOString();
+        const nextHistory = history.slice(0, -1);
+        const updates = { history: nextHistory, updatedAt };
+        updates[`entries.${item.dateKey}`] = item.before === null ? deleteField() : item.before;
+        await updateDoc(docRef, updates);
+        if (item.before === null) delete state.entries[item.dateKey];
+        else state.entries[item.dateKey] = structuredClone(item.before);
+        state.history = nextHistory;
+        state.updatedAt = updatedAt;
+        closeHistoryModal();
+        setSaveStatus("已撤销，其他设备会自动同步");
+        render();
+      } catch (err) {
+        console.error("undoLastChange failed:", err);
+        setSaveStatus("撤销失败，请检查网络。", true);
+        alert("撤销失败，请检查网络。");
+      }
     }
 
     function csvEscape(value) {
@@ -1082,13 +1347,15 @@
       }
     }
 
-    async function saveDateEntry(dateKey, entry) {
+    async function saveDateEntry(dateKey, entry, previousEntry) {
       try {
         setSaveStatus("保存中...");
         const updatedAt = new Date().toISOString();
+        const history = appendHistory(makeHistoryItem("update", dateKey, previousEntry, entry));
         state.updatedAt = updatedAt;
         await updateDoc(docRef, {
           [`entries.${dateKey}`]: entry,
+          history,
           updatedAt
         });
         setSaveStatus("已保存，其他设备会自动同步");
@@ -1099,13 +1366,15 @@
       }
     }
 
-    async function deleteDateEntry(dateKey) {
+    async function deleteDateEntry(dateKey, previousEntry) {
       try {
         setSaveStatus("保存中...");
         const updatedAt = new Date().toISOString();
+        const history = appendHistory(makeHistoryItem("delete", dateKey, previousEntry, null));
         state.updatedAt = updatedAt;
         await updateDoc(docRef, {
           [`entries.${dateKey}`]: deleteField(),
+          history,
           updatedAt
         });
         setSaveStatus("已清空，其他设备会自动同步");
@@ -1146,6 +1415,23 @@
         if (m === currentDate.getMonth()) op.selected = true;
         monthSelect.appendChild(op);
       }
+    }
+
+    function buildFilterSelect() {
+      const currentValue = filterLegendId;
+      filterLegendSelect.innerHTML = '<option value="">全部任务</option>';
+      state.legends.forEach((legend) => {
+        const option = document.createElement("option");
+        option.value = legend.id;
+        option.textContent = legend.label;
+        filterLegendSelect.appendChild(option);
+      });
+      if (state.legends.some((legend) => legend.id === currentValue)) {
+        filterLegendSelect.value = currentValue;
+      } else {
+        filterLegendId = "";
+      }
+      searchInput.value = searchQuery;
     }
 
     function openModal(dateKey) {
@@ -1317,12 +1603,15 @@
 
         const dateKey = getDateKey(cellDate);
         const entry = getEntry(dateKey);
-        const legends = getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
+        const legends = hasActiveFilter()
+          ? getFilteredLegends(entry)
+          : getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
 
         const day = document.createElement("div");
         day.className = "day";
         if (otherMonth) day.classList.add("other-month");
         if (dateKey === todayKey) day.classList.add("today");
+        if (entry && hasActiveFilter() && !entryMatchesFilter(entry)) day.classList.add("filtered-out");
         day.innerHTML = `<div class="date-number">${dayNum}</div>`;
 
         if (legends.length) {
@@ -1402,10 +1691,13 @@
         const date = new Date(year, month, d);
         const dateKey = getDateKey(date);
         const entry = getEntry(dateKey);
-        const legends = getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
+        const legends = hasActiveFilter()
+          ? getFilteredLegends(entry)
+          : getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
 
         const cell = document.createElement("div");
         cell.className = "mini-day";
+        if (entry && hasActiveFilter() && !entryMatchesFilter(entry)) cell.classList.add("filtered-out");
         if (legends.length) {
           cell.classList.add("has-entry");
           cell.style.setProperty("--event-border", buildEqualBorderGradient(legends));
@@ -1457,8 +1749,10 @@
     }
 
     function renderStats() {
-      const total = Object.keys(state.entries).length;
+      const visibleKeys = Object.keys(state.entries).filter((key) => entryMatchesFilter(state.entries[key]));
+      const total = visibleKeys.length;
       totalCount.textContent = total;
+      totalLabel.textContent = hasActiveFilter() ? "全部筛选结果" : "总记录天数";
       lastUpdatedText.textContent = `最近更新：${formatTimestamp(state.updatedAt)}`;
 
       const year = currentDate.getFullYear();
@@ -1466,14 +1760,14 @@
 
       if (currentView === "month") {
         const prefix = getMonthPrefix(year, month);
-        const count = Object.keys(state.entries).filter((k) => k.startsWith(prefix)).length;
+        const count = visibleKeys.filter((k) => k.startsWith(prefix)).length;
         rangeCount.textContent = count;
-        rangeLabel.textContent = "本月已记录";
+        rangeLabel.textContent = hasActiveFilter() ? "本月筛选结果" : "本月已记录";
       } else {
         const yearPrefix = `${year}-`;
-        const count = Object.keys(state.entries).filter((k) => k.startsWith(yearPrefix)).length;
+        const count = visibleKeys.filter((k) => k.startsWith(yearPrefix)).length;
         rangeCount.textContent = count;
-        rangeLabel.textContent = "本年已记录";
+        rangeLabel.textContent = hasActiveFilter() ? "本年筛选结果" : "本年已记录";
       }
     }
 
@@ -1496,11 +1790,14 @@
       }
       if (!state.legends) state.legends = structuredClone(DEFAULT_STATE.legends);
       if (!state.entries) state.entries = {};
+      if (!Array.isArray(state.history)) state.history = [];
       if (!state.updatedAt) state.updatedAt = null;
 
       buildSelects();
+      buildFilterSelect();
       renderViewToggle();
       renderLegendEditor();
+      renderHistoryList();
 
       if (currentView === "month") {
         renderMonthView();
@@ -1533,6 +1830,7 @@
           state = snap.data();
           if (!state.legends) state.legends = structuredClone(DEFAULT_STATE.legends);
           if (!state.entries) state.entries = {};
+          if (!Array.isArray(state.history)) state.history = [];
           if (!state.updatedAt) state.updatedAt = null;
           setSaveStatus("数据已同步");
           render();
