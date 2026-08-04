@@ -195,21 +195,28 @@
       font-weight: 700;
     }
 
+    .entry-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-top: 7px;
+    }
+
     .entry-label {
-      position: absolute;
-      left: 8px;
-      right: 8px;
-      bottom: 28px;
       font-size: 11px;
       font-weight: 700;
-      background: rgba(255, 255, 255, 0.82);
-      border-radius: 999px;
+      border-radius: 7px;
       padding: 4px 7px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      backdrop-filter: blur(6px);
       color: #111827;
+    }
+
+    .entry-more {
+      color: var(--muted);
+      font-size: 10px;
+      padding-left: 4px;
     }
 
     .entry-note {
@@ -286,6 +293,22 @@
       position: relative;
       z-index: 1;
       font-weight: 600;
+    }
+
+    .mini-dots {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      bottom: 2px;
+      display: flex;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .mini-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
     }
 
     .legend-list {
@@ -510,10 +533,7 @@
         padding: 8px;
       }
 
-      .entry-label {
-        font-size: 10px;
-        bottom: 24px;
-      }
+      .entry-label { font-size: 9px; padding: 3px 5px; }
 
       .entry-note {
         font-size: 9px;
@@ -620,7 +640,7 @@
   <div class="modal" id="modal">
     <div class="modal-card">
       <div class="selected-date" id="selectedDateText"></div>
-      <div class="small">点击颜色来设置当天记录，再输入备注。</div>
+      <div class="small">可同时选择多个挑战类型，再输入当天备注。</div>
 
       <div class="option-grid" id="optionGrid"></div>
 
@@ -631,7 +651,7 @@
 
       <div class="modal-actions">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button id="saveNoteBtn" class="primary">保存备注</button>
+          <button id="saveNoteBtn" class="primary">保存当天记录</button>
           <button id="clearDayBtn">清空这一天</button>
         </div>
         <button id="closeModalBtn">关闭</button>
@@ -641,7 +661,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBhwkDkx_xCU51bd7owNF74FunoUec2KrY",
@@ -675,6 +695,7 @@
     let currentDate = new Date();
     let currentView = "month";
     let selectedDateKey = null;
+    let selectedLegendIds = [];
 
     const mainTitle = document.getElementById("mainTitle");
     const calendarGrid = document.getElementById("calendarGrid");
@@ -765,22 +786,24 @@
 
     document.getElementById("saveNoteBtn").addEventListener("click", async () => {
       if (!selectedDateKey) return;
-
-      if (!state.entries[selectedDateKey]) {
-        state.entries[selectedDateKey] = { legendId: null, note: noteInput.value.trim() };
-      } else {
-        state.entries[selectedDateKey].note = noteInput.value.trim();
-      }
-
-      await saveState();
+      const oldEntry = state.entries[selectedDateKey] || {};
+      const entry = {
+        ...oldEntry,
+        legendId: selectedLegendIds[0] || null,
+        legendIds: [...selectedLegendIds],
+        note: noteInput.value.trim()
+      };
+      state.entries[selectedDateKey] = entry;
+      await saveDateEntry(selectedDateKey, entry);
       closeModal();
     });
 
     document.getElementById("clearDayBtn").addEventListener("click", async () => {
       if (!selectedDateKey) return;
       if (!confirm(`确定要清空 ${formatDateKey(selectedDateKey)} 的记录吗？`)) return;
-      delete state.entries[selectedDateKey];
-      await saveState();
+      const dateKey = selectedDateKey;
+      delete state.entries[dateKey];
+      await deleteDateEntry(dateKey);
       closeModal();
     });
 
@@ -810,6 +833,14 @@
 
     function getEntry(dateKey) {
       return state.entries[dateKey] || null;
+    }
+
+    function getEntryLegendIds(entry) {
+      if (!entry || typeof entry !== "object") return [];
+      if (Array.isArray(entry.legendIds)) {
+        return [...new Set(entry.legendIds.filter((id) => typeof id === "string" && id))];
+      }
+      return entry.legendId ? [entry.legendId] : [];
     }
 
     function getLegendById(id) {
@@ -854,15 +885,19 @@
 
       sortedKeys.forEach((dateKey) => {
         const entry = state.entries[dateKey] || {};
-        const legend = entry.legendId ? getLegendById(entry.legendId) : null;
-        rows.push([
-          dateKey,
-          entry.legendId || "",
-          legend?.label || "",
-          legend?.color || "",
-          entry.note || "",
-          state.updatedAt || ""
-        ]);
+        const legendIds = getEntryLegendIds(entry);
+        if (!legendIds.length) legendIds.push("");
+        legendIds.forEach((legendId) => {
+          const legend = legendId ? getLegendById(legendId) : null;
+          rows.push([
+            dateKey,
+            legendId,
+            legend?.label || "",
+            legend?.color || "",
+            entry.note || "",
+            state.updatedAt || ""
+          ]);
+        });
       });
 
       const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
@@ -885,7 +920,7 @@
     }
 
     async function deleteLegend(legendId) {
-      const usingCount = Object.values(state.entries).filter((entry) => entry?.legendId === legendId).length;
+      const usingCount = Object.values(state.entries).filter((entry) => getEntryLegendIds(entry).includes(legendId)).length;
       const legend = getLegendById(legendId);
       if (!legend) return;
 
@@ -898,9 +933,10 @@
       state.legends = state.legends.filter((legendItem) => legendItem.id !== legendId);
 
       Object.values(state.entries).forEach((entry) => {
-        if (entry?.legendId === legendId) {
-          entry.legendId = null;
-        }
+        if (!entry || typeof entry !== "object") return;
+        const remainingIds = getEntryLegendIds(entry).filter((id) => id !== legendId);
+        entry.legendIds = remainingIds;
+        entry.legendId = remainingIds[0] || null;
       });
 
       await saveState();
@@ -917,6 +953,40 @@
         console.error("saveState failed:", err);
         setSaveStatus("保存失败，请检查 Firebase 配置和 Firestore Rules。", true);
         alert("保存失败，请检查 Firebase 配置和 Firestore Rules。");
+      }
+    }
+
+    async function saveDateEntry(dateKey, entry) {
+      try {
+        setSaveStatus("保存中...");
+        const updatedAt = new Date().toISOString();
+        state.updatedAt = updatedAt;
+        await updateDoc(docRef, {
+          [`entries.${dateKey}`]: entry,
+          updatedAt
+        });
+        setSaveStatus("已保存，其他设备会自动同步");
+      } catch (err) {
+        console.error("saveDateEntry failed:", err);
+        setSaveStatus("保存失败，请检查网络或 Firebase 配置。", true);
+        alert("保存失败，请检查网络或 Firebase 配置。");
+      }
+    }
+
+    async function deleteDateEntry(dateKey) {
+      try {
+        setSaveStatus("保存中...");
+        const updatedAt = new Date().toISOString();
+        state.updatedAt = updatedAt;
+        await updateDoc(docRef, {
+          [`entries.${dateKey}`]: deleteField(),
+          updatedAt
+        });
+        setSaveStatus("已清空，其他设备会自动同步");
+      } catch (err) {
+        console.error("deleteDateEntry failed:", err);
+        setSaveStatus("清空失败，请检查网络或 Firebase 配置。", true);
+        alert("清空失败，请检查网络或 Firebase 配置。");
       }
     }
 
@@ -957,13 +1027,14 @@
       selectedDateText.textContent = formatDateKey(dateKey);
 
       const currentEntry = getEntry(dateKey);
+      selectedLegendIds = getEntryLegendIds(currentEntry);
       noteInput.value = currentEntry?.note || "";
       lastUpdatedText.textContent = `最近更新：${formatTimestamp(state.updatedAt)}`;
 
       optionGrid.innerHTML = "";
 
       state.legends.forEach((legend) => {
-        const isSelected = currentEntry?.legendId === legend.id;
+        const isSelected = selectedLegendIds.includes(legend.id);
         const item = document.createElement("div");
         item.className = `option${isSelected ? " selected" : ""}`;
         item.innerHTML = `
@@ -972,18 +1043,20 @@
             <div style="font-weight:700;">${escapeHtml(legend.label)}</div>
             <div class="small">总共 ${getLegendTotalCount(legend.id)} 次</div>
           </div>
-          <div class="option-check">${isSelected ? "当前选择" : ""}</div>
+          <div class="option-check">${isSelected ? "已选择" : "选择"}</div>
         `;
 
-        item.addEventListener("click", async () => {
-          const oldNote = state.entries[dateKey]?.note || "";
-          state.entries[dateKey] = {
-            legendId: legend.id,
-            note: oldNote
-          };
-          noteInput.value = oldNote;
-          closeModal();
-          await saveState();
+        item.addEventListener("click", () => {
+          const selectedIndex = selectedLegendIds.indexOf(legend.id);
+          if (selectedIndex >= 0) {
+            selectedLegendIds.splice(selectedIndex, 1);
+            item.classList.remove("selected");
+            item.querySelector(".option-check").textContent = "选择";
+          } else {
+            selectedLegendIds.push(legend.id);
+            item.classList.add("selected");
+            item.querySelector(".option-check").textContent = "已选择";
+          }
         });
 
         optionGrid.appendChild(item);
@@ -995,10 +1068,11 @@
     function closeModal() {
       modal.classList.remove("show");
       selectedDateKey = null;
+      selectedLegendIds = [];
     }
 
     function getLegendTotalCount(legendId) {
-      return Object.values(state.entries).filter((entry) => entry?.legendId === legendId).length;
+      return Object.values(state.entries).filter((entry) => getEntryLegendIds(entry).includes(legendId)).length;
     }
 
     function getLegendRangeCount(legendId) {
@@ -1007,11 +1081,11 @@
 
       if (currentView === "month") {
         const prefix = getMonthPrefix(year, month);
-        return Object.entries(state.entries).filter(([key, entry]) => key.startsWith(prefix) && entry?.legendId === legendId).length;
+        return Object.entries(state.entries).filter(([key, entry]) => key.startsWith(prefix) && getEntryLegendIds(entry).includes(legendId)).length;
       }
 
       const yearPrefix = `${year}-`;
-      return Object.entries(state.entries).filter(([key, entry]) => key.startsWith(yearPrefix) && entry?.legendId === legendId).length;
+      return Object.entries(state.entries).filter(([key, entry]) => key.startsWith(yearPrefix) && getEntryLegendIds(entry).includes(legendId)).length;
     }
 
     function renderLegendEditor() {
@@ -1098,21 +1172,31 @@
 
         const dateKey = getDateKey(cellDate);
         const entry = getEntry(dateKey);
-        const legend = entry?.legendId ? getLegendById(entry.legendId) : null;
+        const legends = getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
 
         const day = document.createElement("div");
         day.className = "day";
         if (otherMonth) day.classList.add("other-month");
         if (dateKey === todayKey) day.classList.add("today");
-        if (legend) day.style.background = legend.color;
-
         day.innerHTML = `<div class="date-number">${dayNum}</div>`;
 
-        if (legend) {
-          const label = document.createElement("div");
-          label.className = "entry-label";
-          label.textContent = legend.label;
-          day.appendChild(label);
+        if (legends.length) {
+          const list = document.createElement("div");
+          list.className = "entry-list";
+          legends.slice(0, 3).forEach((legend) => {
+            const label = document.createElement("div");
+            label.className = "entry-label";
+            label.style.background = legend.color;
+            label.textContent = legend.label;
+            list.appendChild(label);
+          });
+          if (legends.length > 3) {
+            const more = document.createElement("div");
+            more.className = "entry-more";
+            more.textContent = `还有 ${legends.length - 3} 项`;
+            list.appendChild(more);
+          }
+          day.appendChild(list);
         }
 
         if (entry?.note) {
@@ -1162,16 +1246,27 @@
         const date = new Date(year, month, d);
         const dateKey = getDateKey(date);
         const entry = getEntry(dateKey);
-        const legend = entry?.legendId ? getLegendById(entry.legendId) : null;
+        const legends = getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
 
         const cell = document.createElement("div");
         cell.className = "mini-day";
-        if (legend) cell.style.background = legend.color;
 
         const number = document.createElement("div");
         number.className = "mini-day-number";
         number.textContent = d;
         cell.appendChild(number);
+
+        if (legends.length) {
+          const dots = document.createElement("div");
+          dots.className = "mini-dots";
+          legends.slice(0, 4).forEach((legend) => {
+            const dot = document.createElement("span");
+            dot.className = "mini-dot";
+            dot.style.background = legend.color;
+            dots.appendChild(dot);
+          });
+          cell.appendChild(dots);
+        }
 
         cell.addEventListener("click", (e) => {
           e.stopPropagation();
