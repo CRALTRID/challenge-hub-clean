@@ -16,6 +16,18 @@
       --accent: #111827;
     }
 
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --line: #334155;
+      --accent: #2563eb;
+      --shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+      --shadow-strong: 0 14px 36px rgba(0, 0, 0, 0.3);
+    }
+
     * {
       box-sizing: border-box;
     }
@@ -26,6 +38,40 @@
       background: var(--bg);
       color: var(--text);
     }
+
+    html[data-theme="dark"] button,
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] textarea,
+    html[data-theme="dark"] .day,
+    html[data-theme="dark"] .mini-month,
+    html[data-theme="dark"] .mini-day,
+    html[data-theme="dark"] .modal-card,
+    html[data-theme="dark"] .option {
+      background: #1e293b;
+      color: var(--text);
+    }
+
+    html[data-theme="dark"] .legend-item,
+    html[data-theme="dark"] .stat,
+    html[data-theme="dark"] .average-item,
+    html[data-theme="dark"] .history-item {
+      background: #172033;
+    }
+
+    html[data-theme="dark"] .option:hover,
+    html[data-theme="dark"] .option.selected {
+      background: #263449;
+    }
+
+    html[data-theme="dark"] .day.other-month { background: #182235; }
+    html[data-theme="dark"] .entry-label { color: #111827; }
+    html[data-theme="dark"] .entry-note { background: rgba(255, 255, 255, 0.78); }
+    html[data-theme="dark"] .modal-actions { background: #1e293b; }
+    html[data-theme="dark"] .option-check,
+    html[data-theme="dark"] .mini-day,
+    html[data-theme="dark"] .mini-day-number { color: var(--text); }
+    html[data-theme="dark"] .day.today { outline-color: #60a5fa; }
 
     .wrap {
       max-width: 1500px;
@@ -101,6 +147,14 @@
       grid-template-columns: minmax(0, 3fr) minmax(235px, 0.62fr);
       gap: 16px;
       align-items: start;
+    }
+
+    .layout.side-collapsed {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .layout.side-collapsed .side-panel {
+      display: none;
     }
 
     .panel {
@@ -825,14 +879,16 @@
         <button id="yearViewBtn">年视图</button>
         <button id="prevBtn">上一个</button>
         <button id="todayBtn">今天</button>
+        <button id="quickRecordBtn" class="primary">＋ 今天完成了什么</button>
         <button id="thisYearBtn">今年</button>
         <button id="nextBtn">下一个</button>
+        <button id="toggleSidePanelBtn">隐藏侧栏</button>
         <select id="yearSelect"></select>
         <select id="monthSelect"></select>
       </div>
     </div>
 
-    <div class="layout">
+    <div class="layout" id="mainLayout">
       <div class="panel calendar-panel">
         <div class="panel-title">
           <div class="month-heading">
@@ -847,6 +903,15 @@
               <button id="importJsonBtn">导入备份</button>
               <button id="exportJsonBtn">导出 JSON</button>
               <button id="exportCsvBtn">导出 CSV</button>
+              <select id="themeSelect" aria-label="显示模式">
+                <option value="system">外观：自动</option>
+                <option value="light">外观：浅色</option>
+                <option value="dark">外观：深色</option>
+              </select>
+              <select id="weekStartSelect" aria-label="每周开始日">
+                <option value="sunday">每周：周日开始</option>
+                <option value="monday">每周：周一开始</option>
+              </select>
               <input id="importJsonInput" class="hidden" type="file" accept="application/json,.json" />
             </div>
           </details>
@@ -861,15 +926,7 @@
         </div>
 
         <div id="monthView">
-          <div class="weekday-row">
-            <div class="weekday">日</div>
-            <div class="weekday">一</div>
-            <div class="weekday">二</div>
-            <div class="weekday">三</div>
-            <div class="weekday">四</div>
-            <div class="weekday">五</div>
-            <div class="weekday">六</div>
-          </div>
+          <div class="weekday-row" id="weekdayRow"></div>
           <div class="calendar-grid" id="calendarGrid"></div>
         </div>
 
@@ -878,7 +935,7 @@
         </div>
       </div>
 
-      <div class="panel side-panel">
+      <div class="panel side-panel" id="sidePanel">
         <div class="panel-title">
           <h2>记录类型</h2>
         </div>
@@ -889,6 +946,7 @@
 
         <div class="legend-tools">
           <button id="addLegendBtn" class="primary">新增类型</button>
+          <button id="archivedLegendsBtn">已归档任务</button>
         </div>
 
         <div class="stats">
@@ -974,6 +1032,17 @@
     </div>
   </div>
 
+  <div class="modal" id="archivedModal">
+    <div class="modal-card">
+      <div class="selected-date">已归档任务</div>
+      <div class="small">归档任务不会出现在新日期的选择列表中，历史记录仍会保留。</div>
+      <div class="legend-list" id="archivedLegendList"></div>
+      <div class="modal-actions">
+        <button id="closeArchivedModalBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
@@ -1005,6 +1074,11 @@
       entries: {},
       history: [],
       averageLegendIds: [],
+      settings: {
+        theme: "system",
+        weekStartsMonday: false,
+        sidePanelCollapsed: false
+      },
       updatedAt: null
     };
 
@@ -1053,6 +1127,14 @@
     const frequencyPanelTitle = document.getElementById("frequencyPanelTitle");
     const averageModal = document.getElementById("averageModal");
     const averageOptionGrid = document.getElementById("averageOptionGrid");
+    const archivedModal = document.getElementById("archivedModal");
+    const archivedLegendList = document.getElementById("archivedLegendList");
+    const themeSelect = document.getElementById("themeSelect");
+    const weekStartSelect = document.getElementById("weekStartSelect");
+    const mainLayout = document.getElementById("mainLayout");
+    const weekdayRow = document.getElementById("weekdayRow");
+    const toggleSidePanelBtn = document.getElementById("toggleSidePanelBtn");
+    const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const mobileMenuQuery = window.matchMedia("(max-width: 760px)");
 
     function syncResponsiveMenus(event) {
@@ -1070,6 +1152,17 @@
       if (e.target === averageModal) closeAverageModal();
     });
     document.getElementById("saveAverageTasksBtn").addEventListener("click", saveAverageTasks);
+    document.getElementById("archivedLegendsBtn").addEventListener("click", openArchivedModal);
+    document.getElementById("closeArchivedModalBtn").addEventListener("click", closeArchivedModal);
+    archivedModal.addEventListener("click", (e) => {
+      if (e.target === archivedModal) closeArchivedModal();
+    });
+    themeSelect.addEventListener("change", saveThemePreference);
+    weekStartSelect.addEventListener("change", saveWeekStartPreference);
+    toggleSidePanelBtn.addEventListener("click", toggleSidePanel);
+    darkModeQuery.addEventListener("change", () => {
+      if ((state.settings?.theme || "system") === "system") applyTheme();
+    });
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
@@ -1103,6 +1196,10 @@
       currentDate = new Date();
       currentView = "month";
       render();
+    });
+
+    document.getElementById("quickRecordBtn").addEventListener("click", () => {
+      openModal(getDateKey(new Date()));
     });
 
     document.getElementById("thisYearBtn").addEventListener("click", () => {
@@ -1245,6 +1342,10 @@
       return state.legends.find((l) => l.id === id) || null;
     }
 
+    function isLegendArchived(legend) {
+      return Boolean(legend?.archived);
+    }
+
     function hasActiveFilter() {
       return Boolean(searchQuery || filterLegendId);
     }
@@ -1274,7 +1375,10 @@
 
     function getLinkedLegendIds(legend) {
       if (!legend || !Array.isArray(legend.linkedLegendIds)) return [];
-      return [...new Set(legend.linkedLegendIds.filter((id) => id !== legend.id && getLegendById(id)))];
+      return [...new Set(legend.linkedLegendIds.filter((id) => {
+        const linkedLegend = getLegendById(id);
+        return id !== legend.id && linkedLegend && !isLegendArchived(linkedLegend);
+      }))];
     }
 
     function expandLinkedLegendIds(initialIds) {
@@ -1294,6 +1398,86 @@
     function setSaveStatus(message, isError = false) {
       saveStatus.textContent = message;
       saveStatus.style.color = isError ? "#b91c1c" : "var(--muted)";
+    }
+
+    function applyTheme() {
+      const preference = state.settings?.theme || "system";
+      const resolvedTheme = preference === "system"
+        ? (darkModeQuery.matches ? "dark" : "light")
+        : preference;
+      document.documentElement.dataset.theme = resolvedTheme;
+      themeSelect.value = preference;
+    }
+
+    async function saveThemePreference() {
+      const theme = themeSelect.value;
+      state.settings = { ...(state.settings || {}), theme };
+      applyTheme();
+      try {
+        const updatedAt = new Date().toISOString();
+        state.updatedAt = updatedAt;
+        await updateDoc(docRef, { settings: state.settings, updatedAt });
+        setSaveStatus("外观设置已同步");
+      } catch (err) {
+        console.error("saveThemePreference failed:", err);
+        setSaveStatus("外观设置保存失败。", true);
+      }
+    }
+
+    function applyLayoutSettings() {
+      const mondayStart = Boolean(state.settings?.weekStartsMonday);
+      const sideCollapsed = Boolean(state.settings?.sidePanelCollapsed);
+      weekStartSelect.value = mondayStart ? "monday" : "sunday";
+      mainLayout.classList.toggle("side-collapsed", sideCollapsed);
+      toggleSidePanelBtn.textContent = sideCollapsed ? "显示侧栏" : "隐藏侧栏";
+    }
+
+    async function persistSettings(statusMessage) {
+      try {
+        const updatedAt = new Date().toISOString();
+        state.updatedAt = updatedAt;
+        await updateDoc(docRef, { settings: state.settings, updatedAt });
+        setSaveStatus(statusMessage);
+      } catch (err) {
+        console.error("persistSettings failed:", err);
+        setSaveStatus("设置保存失败，请检查网络。", true);
+      }
+    }
+
+    async function saveWeekStartPreference() {
+      state.settings = {
+        ...(state.settings || {}),
+        weekStartsMonday: weekStartSelect.value === "monday"
+      };
+      render();
+      await persistSettings("每周开始日已同步");
+    }
+
+    async function toggleSidePanel() {
+      state.settings = {
+        ...(state.settings || {}),
+        sidePanelCollapsed: !state.settings?.sidePanelCollapsed
+      };
+      applyLayoutSettings();
+      await persistSettings(state.settings.sidePanelCollapsed ? "侧栏已隐藏" : "侧栏已显示");
+    }
+
+    function getAdjustedWeekday(date) {
+      const weekday = date.getDay();
+      return state.settings?.weekStartsMonday ? (weekday + 6) % 7 : weekday;
+    }
+
+    function renderWeekdayHeader() {
+      const weekdays = state.settings?.weekStartsMonday
+        ? ["一", "二", "三", "四", "五", "六", "日"]
+        : ["日", "一", "二", "三", "四", "五", "六"];
+      weekdayRow.innerHTML = "";
+      weekdays.forEach((label) => {
+        const cell = document.createElement("div");
+        cell.className = "weekday";
+        cell.textContent = label;
+        weekdayRow.appendChild(cell);
+      });
     }
 
     function makeLegendId() {
@@ -1476,7 +1660,7 @@
     function configureLinkedLegends(legendId) {
       const legend = getLegendById(legendId);
       if (!legend) return;
-      const candidates = state.legends.filter((item) => item.id !== legendId);
+      const candidates = state.legends.filter((item) => item.id !== legendId && !isLegendArchived(item));
       if (!candidates.length) {
         alert("请先新增至少一个其他任务类型。");
         return;
@@ -1490,7 +1674,7 @@
 
     function renderLinkOptions() {
       linkOptionGrid.innerHTML = "";
-      state.legends.filter((legend) => legend.id !== linkingLegendId).forEach((legend) => {
+      state.legends.filter((legend) => legend.id !== linkingLegendId && !isLegendArchived(legend)).forEach((legend) => {
         const isSelected = pendingLinkedLegendIds.includes(legend.id);
         const item = document.createElement("div");
         item.className = `option${isSelected ? " selected" : ""}`;
@@ -1533,7 +1717,7 @@
 
     function renderAverageOptions() {
       averageOptionGrid.innerHTML = "";
-      state.legends.forEach((legend) => {
+      state.legends.filter((legend) => !isLegendArchived(legend)).forEach((legend) => {
         const isSelected = pendingAverageLegendIds.includes(legend.id);
         const item = document.createElement("div");
         item.className = `option${isSelected ? " selected" : ""}`;
@@ -1603,6 +1787,72 @@
 
       await saveState();
       render();
+    }
+
+    async function archiveLegend(legendId) {
+      const legend = getLegendById(legendId);
+      if (!legend) return;
+      const usingCount = getLegendTotalCount(legendId);
+      if (!confirm(`归档“${legend.label}”吗？${usingCount ? `已有的 ${usingCount} 条历史记录会继续保留。` : ""}`)) return;
+      legend.archived = true;
+      if (Array.isArray(state.averageLegendIds)) {
+        state.averageLegendIds = state.averageLegendIds.filter((id) => id !== legendId);
+      }
+      await saveState();
+      render();
+    }
+
+    async function restoreLegend(legendId) {
+      const legend = getLegendById(legendId);
+      if (!legend) return;
+      legend.archived = false;
+      await saveState();
+      render();
+      renderArchivedLegendList();
+    }
+
+    function openArchivedModal() {
+      renderArchivedLegendList();
+      archivedModal.classList.add("show");
+    }
+
+    function closeArchivedModal() {
+      archivedModal.classList.remove("show");
+    }
+
+    function renderArchivedLegendList() {
+      archivedLegendList.innerHTML = "";
+      const archivedLegends = state.legends.filter(isLegendArchived);
+      if (!archivedLegends.length) {
+        archivedLegendList.innerHTML = '<div class="small">暂时没有已归档任务。</div>';
+        return;
+      }
+      archivedLegends.forEach((legend) => {
+        const row = document.createElement("div");
+        row.className = "legend-item";
+        row.innerHTML = `
+          <div class="swatch" style="background:${legend.color}"></div>
+          <div class="legend-main">
+            <div style="font-size:13px;font-weight:700;">${escapeHtml(legend.label)}</div>
+            <div class="legend-count">历史记录 ${getLegendTotalCount(legend.id)} 次</div>
+          </div>
+        `;
+        const actions = document.createElement("div");
+        actions.className = "legend-actions";
+        const restoreBtn = document.createElement("button");
+        restoreBtn.textContent = "恢复";
+        restoreBtn.addEventListener("click", () => restoreLegend(legend.id));
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "删除";
+        deleteBtn.addEventListener("click", async () => {
+          await deleteLegend(legend.id);
+          renderArchivedLegendList();
+        });
+        actions.appendChild(restoreBtn);
+        actions.appendChild(deleteBtn);
+        row.appendChild(actions);
+        archivedLegendList.appendChild(row);
+      });
     }
 
     async function saveState() {
@@ -1694,7 +1944,7 @@
       state.legends.forEach((legend) => {
         const option = document.createElement("option");
         option.value = legend.id;
-        option.textContent = legend.label;
+        option.textContent = `${legend.label}${isLegendArchived(legend) ? "（已归档）" : ""}`;
         filterLegendSelect.appendChild(option);
       });
       if (state.legends.some((legend) => legend.id === currentValue)) {
@@ -1721,7 +1971,7 @@
     function renderModalOptions() {
       optionGrid.innerHTML = "";
 
-      state.legends.forEach((legend) => {
+      state.legends.filter((legend) => !isLegendArchived(legend)).forEach((legend) => {
         const isSelected = selectedLegendIds.includes(legend.id);
         const linkedNames = getLinkedLegendIds(legend).map((id) => getLegendById(id)?.label).filter(Boolean);
         const item = document.createElement("div");
@@ -1778,7 +2028,7 @@
     function renderLegendEditor() {
       legendList.innerHTML = "";
 
-      state.legends.forEach((legend) => {
+      state.legends.filter((legend) => !isLegendArchived(legend)).forEach((legend) => {
         const row = document.createElement("div");
         row.className = "legend-item";
 
@@ -1807,10 +2057,10 @@
         linkBtn.className = "link-btn";
         linkBtn.textContent = "关联";
 
-        const deleteBtn = document.createElement("button");
-        deleteBtn.type = "button";
-        deleteBtn.className = "icon-btn";
-        deleteBtn.textContent = "删除";
+        const archiveBtn = document.createElement("button");
+        archiveBtn.type = "button";
+        archiveBtn.className = "icon-btn";
+        archiveBtn.textContent = "归档";
 
         color.addEventListener("input", async () => {
           legend.color = color.value;
@@ -1822,8 +2072,8 @@
           await saveState();
         });
 
-        deleteBtn.addEventListener("click", async () => {
-          await deleteLegend(legend.id);
+        archiveBtn.addEventListener("click", async () => {
+          await archiveLegend(legend.id);
         });
 
         linkBtn.addEventListener("click", async () => {
@@ -1836,7 +2086,7 @@
         row.appendChild(color);
         row.appendChild(main);
         actions.appendChild(linkBtn);
-        actions.appendChild(deleteBtn);
+        actions.appendChild(archiveBtn);
         row.appendChild(actions);
         legendList.appendChild(row);
       });
@@ -1849,7 +2099,7 @@
       calendarGrid.innerHTML = "";
 
       const firstDay = new Date(year, month, 1);
-      const startWeekday = firstDay.getDay();
+      const startWeekday = getAdjustedWeekday(firstDay);
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       const daysInPrevMonth = new Date(year, month, 0).getDate();
       const todayKey = getDateKey(new Date());
@@ -1938,7 +2188,10 @@
 
       const weekdays = document.createElement("div");
       weekdays.className = "mini-weekdays";
-      ["日", "一", "二", "三", "四", "五", "六"].forEach((d) => {
+      const weekdayLabels = state.settings?.weekStartsMonday
+        ? ["一", "二", "三", "四", "五", "六", "日"]
+        : ["日", "一", "二", "三", "四", "五", "六"];
+      weekdayLabels.forEach((d) => {
         const el = document.createElement("div");
         el.textContent = d;
         weekdays.appendChild(el);
@@ -1949,7 +2202,7 @@
       days.className = "mini-days";
 
       const firstDay = new Date(year, month, 1);
-      const startWeekday = firstDay.getDay();
+      const startWeekday = getAdjustedWeekday(firstDay);
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
       for (let i = 0; i < startWeekday; i++) {
@@ -2150,13 +2403,19 @@
       if (!state.entries) state.entries = {};
       if (!Array.isArray(state.history)) state.history = [];
       if (!Array.isArray(state.averageLegendIds)) state.averageLegendIds = [];
+      if (!state.settings || typeof state.settings !== "object") state.settings = { theme: "system" };
+      if (!["system", "light", "dark"].includes(state.settings.theme)) state.settings.theme = "system";
       if (!state.updatedAt) state.updatedAt = null;
 
+      applyTheme();
+      applyLayoutSettings();
       buildSelects();
       buildFilterSelect();
+      renderWeekdayHeader();
       renderViewToggle();
       renderLegendEditor();
       renderHistoryList();
+      renderArchivedLegendList();
 
       if (currentView === "month") {
         renderMonthView();
@@ -2192,6 +2451,8 @@
           if (!state.entries) state.entries = {};
           if (!Array.isArray(state.history)) state.history = [];
           if (!Array.isArray(state.averageLegendIds)) state.averageLegendIds = [];
+          if (!state.settings || typeof state.settings !== "object") state.settings = { theme: "system" };
+          if (!["system", "light", "dark"].includes(state.settings.theme)) state.settings.theme = "system";
           if (!state.updatedAt) state.updatedAt = null;
           setSaveStatus("数据已同步");
           render();
