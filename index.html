@@ -295,20 +295,37 @@
       font-weight: 600;
     }
 
+    .mini-day.has-entry::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: 6px;
+      padding: 2px;
+      background: var(--event-border);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
     .mini-dots {
       position: absolute;
-      left: 2px;
-      right: 2px;
+      left: 3px;
+      right: 3px;
       bottom: 2px;
       display: flex;
       justify-content: center;
-      gap: 2px;
+      gap: 1px;
+      z-index: 2;
     }
 
     .mini-dot {
-      width: 4px;
-      height: 4px;
+      width: 6px;
+      height: 6px;
+      min-width: 3px;
+      flex: 0 1 6px;
       border-radius: 999px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
     }
 
     .legend-list {
@@ -1339,6 +1356,17 @@
       }
     }
 
+    function buildEqualBorderGradient(legends) {
+      if (!legends.length) return "";
+      if (legends.length === 1) return legends[0].color;
+      const stops = legends.flatMap((legend, index) => {
+        const start = (index / legends.length) * 100;
+        const end = ((index + 1) / legends.length) * 100;
+        return [`${legend.color} ${start}%`, `${legend.color} ${end}%`];
+      });
+      return `conic-gradient(from -45deg, ${stops.join(", ")})`;
+    }
+
     function renderMiniMonth(year, month) {
       const box = document.createElement("div");
       box.className = "mini-month";
@@ -1378,6 +1406,10 @@
 
         const cell = document.createElement("div");
         cell.className = "mini-day";
+        if (legends.length) {
+          cell.classList.add("has-entry");
+          cell.style.setProperty("--event-border", buildEqualBorderGradient(legends));
+        }
 
         const number = document.createElement("div");
         number.className = "mini-day-number";
@@ -1387,7 +1419,7 @@
         if (legends.length) {
           const dots = document.createElement("div");
           dots.className = "mini-dots";
-          legends.slice(0, 4).forEach((legend) => {
+          legends.forEach((legend) => {
             const dot = document.createElement("span");
             dot.className = "mini-dot";
             dot.style.background = legend.color;
