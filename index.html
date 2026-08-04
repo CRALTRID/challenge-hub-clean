@@ -364,6 +364,17 @@
       min-width: 40px;
     }
 
+    .legend-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .link-btn {
+      padding: 6px 8px;
+      font-size: 11px;
+    }
+
     .legend-tools {
       display: flex;
       gap: 8px;
@@ -659,6 +670,18 @@
     </div>
   </div>
 
+  <div class="modal" id="linkModal">
+    <div class="modal-card">
+      <div class="selected-date" id="linkModalTitle">设置关联任务</div>
+      <div class="small">选择完成当前任务时要自动一起完成的任务，可多选。</div>
+      <div class="option-grid" id="linkOptionGrid"></div>
+      <div class="modal-actions">
+        <button id="saveLinksBtn" class="primary">保存关联</button>
+        <button id="closeLinkModalBtn">取消</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
@@ -696,6 +719,8 @@
     let currentView = "month";
     let selectedDateKey = null;
     let selectedLegendIds = [];
+    let linkingLegendId = null;
+    let pendingLinkedLegendIds = [];
 
     const mainTitle = document.getElementById("mainTitle");
     const calendarGrid = document.getElementById("calendarGrid");
@@ -714,6 +739,9 @@
     const noteInput = document.getElementById("noteInput");
     const saveStatus = document.getElementById("saveStatus");
     const lastUpdatedText = document.getElementById("lastUpdatedText");
+    const linkModal = document.getElementById("linkModal");
+    const linkModalTitle = document.getElementById("linkModalTitle");
+    const linkOptionGrid = document.getElementById("linkOptionGrid");
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
@@ -784,6 +812,20 @@
       if (e.target === modal) closeModal();
     });
 
+    document.getElementById("closeLinkModalBtn").addEventListener("click", closeLinkModal);
+    linkModal.addEventListener("click", (e) => {
+      if (e.target === linkModal) closeLinkModal();
+    });
+    document.getElementById("saveLinksBtn").addEventListener("click", async () => {
+      if (!linkingLegendId) return;
+      const legend = getLegendById(linkingLegendId);
+      if (!legend) return;
+      legend.linkedLegendIds = [...pendingLinkedLegendIds];
+      await saveState();
+      closeLinkModal();
+      render();
+    });
+
     document.getElementById("saveNoteBtn").addEventListener("click", async () => {
       if (!selectedDateKey) return;
       const oldEntry = state.entries[selectedDateKey] || {};
@@ -845,6 +887,25 @@
 
     function getLegendById(id) {
       return state.legends.find((l) => l.id === id) || null;
+    }
+
+    function getLinkedLegendIds(legend) {
+      if (!legend || !Array.isArray(legend.linkedLegendIds)) return [];
+      return [...new Set(legend.linkedLegendIds.filter((id) => id !== legend.id && getLegendById(id)))];
+    }
+
+    function expandLinkedLegendIds(initialIds) {
+      const result = [];
+      const visited = new Set();
+      const queue = [...initialIds];
+      while (queue.length) {
+        const id = queue.shift();
+        if (!id || visited.has(id) || !getLegendById(id)) continue;
+        visited.add(id);
+        result.push(id);
+        getLinkedLegendIds(getLegendById(id)).forEach((linkedId) => queue.push(linkedId));
+      }
+      return result;
     }
 
     function setSaveStatus(message, isError = false) {
@@ -919,6 +980,48 @@
       render();
     }
 
+    function configureLinkedLegends(legendId) {
+      const legend = getLegendById(legendId);
+      if (!legend) return;
+      const candidates = state.legends.filter((item) => item.id !== legendId);
+      if (!candidates.length) {
+        alert("请先新增至少一个其他任务类型。");
+        return;
+      }
+      linkingLegendId = legendId;
+      pendingLinkedLegendIds = getLinkedLegendIds(legend);
+      linkModalTitle.textContent = `“${legend.label}”自动带上的任务`;
+      renderLinkOptions();
+      linkModal.classList.add("show");
+    }
+
+    function renderLinkOptions() {
+      linkOptionGrid.innerHTML = "";
+      state.legends.filter((legend) => legend.id !== linkingLegendId).forEach((legend) => {
+        const isSelected = pendingLinkedLegendIds.includes(legend.id);
+        const item = document.createElement("div");
+        item.className = `option${isSelected ? " selected" : ""}`;
+        item.innerHTML = `
+          <div class="swatch" style="background:${legend.color}"></div>
+          <div class="option-text"><div style="font-weight:700;">${escapeHtml(legend.label)}</div></div>
+          <div class="option-check">${isSelected ? "已关联" : "选择"}</div>
+        `;
+        item.addEventListener("click", () => {
+          const index = pendingLinkedLegendIds.indexOf(legend.id);
+          if (index >= 0) pendingLinkedLegendIds.splice(index, 1);
+          else pendingLinkedLegendIds.push(legend.id);
+          renderLinkOptions();
+        });
+        linkOptionGrid.appendChild(item);
+      });
+    }
+
+    function closeLinkModal() {
+      linkModal.classList.remove("show");
+      linkingLegendId = null;
+      pendingLinkedLegendIds = [];
+    }
+
     async function deleteLegend(legendId) {
       const usingCount = Object.values(state.entries).filter((entry) => getEntryLegendIds(entry).includes(legendId)).length;
       const legend = getLegendById(legendId);
@@ -937,6 +1040,12 @@
         const remainingIds = getEntryLegendIds(entry).filter((id) => id !== legendId);
         entry.legendIds = remainingIds;
         entry.legendId = remainingIds[0] || null;
+      });
+
+      state.legends.forEach((legendItem) => {
+        if (Array.isArray(legendItem.linkedLegendIds)) {
+          legendItem.linkedLegendIds = legendItem.linkedLegendIds.filter((id) => id !== legendId);
+        }
       });
 
       await saveState();
@@ -1031,17 +1140,23 @@
       noteInput.value = currentEntry?.note || "";
       lastUpdatedText.textContent = `最近更新：${formatTimestamp(state.updatedAt)}`;
 
+      renderModalOptions();
+      modal.classList.add("show");
+    }
+
+    function renderModalOptions() {
       optionGrid.innerHTML = "";
 
       state.legends.forEach((legend) => {
         const isSelected = selectedLegendIds.includes(legend.id);
+        const linkedNames = getLinkedLegendIds(legend).map((id) => getLegendById(id)?.label).filter(Boolean);
         const item = document.createElement("div");
         item.className = `option${isSelected ? " selected" : ""}`;
         item.innerHTML = `
           <div class="swatch" style="background:${legend.color}"></div>
           <div class="option-text">
             <div style="font-weight:700;">${escapeHtml(legend.label)}</div>
-            <div class="small">总共 ${getLegendTotalCount(legend.id)} 次</div>
+            <div class="small">总共 ${getLegendTotalCount(legend.id)} 次${linkedNames.length ? ` · 自动带上 ${escapeHtml(linkedNames.join("、"))}` : ""}</div>
           </div>
           <div class="option-check">${isSelected ? "已选择" : "选择"}</div>
         `;
@@ -1050,19 +1165,17 @@
           const selectedIndex = selectedLegendIds.indexOf(legend.id);
           if (selectedIndex >= 0) {
             selectedLegendIds.splice(selectedIndex, 1);
-            item.classList.remove("selected");
-            item.querySelector(".option-check").textContent = "选择";
           } else {
-            selectedLegendIds.push(legend.id);
-            item.classList.add("selected");
-            item.querySelector(".option-check").textContent = "已选择";
+            selectedLegendIds = [...new Set([
+              ...selectedLegendIds,
+              ...expandLinkedLegendIds([legend.id])
+            ])];
           }
+          renderModalOptions();
         });
 
         optionGrid.appendChild(item);
       });
-
-      modal.classList.add("show");
     }
 
     function closeModal() {
@@ -1109,7 +1222,16 @@
 
         const count = document.createElement("div");
         count.className = "legend-count";
-        count.textContent = `当前 ${getLegendRangeCount(legend.id)} 次 / 总共 ${getLegendTotalCount(legend.id)} 次`;
+        const linkedNames = getLinkedLegendIds(legend).map((id) => getLegendById(id)?.label).filter(Boolean);
+        count.textContent = `当前 ${getLegendRangeCount(legend.id)} 次 / 总共 ${getLegendTotalCount(legend.id)} 次${linkedNames.length ? ` · 自动带上：${linkedNames.join("、")}` : ""}`;
+
+        const actions = document.createElement("div");
+        actions.className = "legend-actions";
+
+        const linkBtn = document.createElement("button");
+        linkBtn.type = "button";
+        linkBtn.className = "link-btn";
+        linkBtn.textContent = "设置关联";
 
         const deleteBtn = document.createElement("button");
         deleteBtn.type = "button";
@@ -1130,12 +1252,18 @@
           await deleteLegend(legend.id);
         });
 
+        linkBtn.addEventListener("click", async () => {
+          await configureLinkedLegends(legend.id);
+        });
+
         main.appendChild(input);
         main.appendChild(count);
 
         row.appendChild(color);
         row.appendChild(main);
-        row.appendChild(deleteBtn);
+        actions.appendChild(linkBtn);
+        actions.appendChild(deleteBtn);
+        row.appendChild(actions);
         legendList.appendChild(row);
       });
     }
