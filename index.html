@@ -542,6 +542,21 @@
       margin-bottom: 14px;
     }
 
+    .actions-menu > summary,
+    .filter-menu > summary {
+      display: none;
+    }
+
+    .actions-menu > .sub-toolbar {
+      display: flex;
+    }
+
+    .filter-menu > .filter-bar {
+      display: grid;
+    }
+
+    .filter-menu { flex-basis: 100%; }
+
     .filter-bar input,
     .filter-bar select {
       width: 100%;
@@ -582,20 +597,43 @@
         padding: 8px;
       }
 
-      .topbar { gap: 10px; margin-bottom: 10px; }
+      .topbar { display: block; margin-bottom: 8px; }
 
-      .toolbar { gap: 6px; }
+      .title p { display: none; }
+
+      .toolbar {
+        gap: 6px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 3px;
+        scrollbar-width: none;
+      }
+
+      .toolbar::-webkit-scrollbar { display: none; }
+
+      .toolbar > * { flex: 0 0 auto; }
 
       .toolbar button,
       .toolbar select { padding: 8px 9px; }
 
       .calendar-panel { padding: 9px; border-radius: 14px; }
 
+      .panel-title { margin-bottom: 7px; }
+
+      .calendar-panel > .panel-title {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .calendar-panel > .panel-title > .month-title { grid-column: 1 / -1; }
+
       .weekday-row,
       .calendar-grid { gap: 3px; }
 
       .title h1 {
-        font-size: 24px;
+        font-size: 20px;
+        margin-bottom: 8px;
       }
 
       .month-title {
@@ -648,10 +686,46 @@
 
       .filter-bar {
         grid-template-columns: 1fr 1fr;
-        margin-bottom: 10px;
+        margin: 8px 0 10px;
       }
 
       .filter-bar input { grid-column: 1 / -1; }
+
+      .actions-menu,
+      .filter-menu { width: auto; min-width: 0; }
+
+      .actions-menu[open],
+      .filter-menu[open] { grid-column: 1 / -1; }
+
+      .actions-menu > summary,
+      .filter-menu > summary {
+        display: block;
+        list-style: none;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 9px;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      .actions-menu > summary::-webkit-details-marker,
+      .filter-menu > summary::-webkit-details-marker { display: none; }
+
+      .actions-menu:not([open]) > .sub-toolbar,
+      .filter-menu:not([open]) > .filter-bar { display: none; }
+
+      .actions-menu[open] > .sub-toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        margin-top: 8px;
+      }
+
+      .actions-menu[open] > .sub-toolbar button { width: 100%; }
+
+      .filter-menu { margin-bottom: 4px; }
     }
   </style>
 </head>
@@ -679,20 +753,25 @@
       <div class="panel calendar-panel">
         <div class="panel-title">
           <div class="month-title" id="mainTitle"></div>
-          <div class="sub-toolbar">
-            <button id="undoBtn">撤销修改</button>
-            <button id="historyBtn">修改记录</button>
-            <button id="importJsonBtn">导入备份</button>
-            <button id="exportJsonBtn">导出 JSON</button>
-            <button id="exportCsvBtn">导出 CSV</button>
-            <input id="importJsonInput" class="hidden" type="file" accept="application/json,.json" />
-          </div>
-        </div>
-
-        <div class="filter-bar">
-          <input id="searchInput" type="search" placeholder="搜索任务名称或备注…" />
-          <select id="filterLegendSelect"><option value="">全部任务</option></select>
-          <button id="clearFilterBtn">清除筛选</button>
+          <details class="actions-menu" open>
+            <summary>数据工具</summary>
+            <div class="sub-toolbar">
+              <button id="undoBtn">撤销修改</button>
+              <button id="historyBtn">修改记录</button>
+              <button id="importJsonBtn">导入备份</button>
+              <button id="exportJsonBtn">导出 JSON</button>
+              <button id="exportCsvBtn">导出 CSV</button>
+              <input id="importJsonInput" class="hidden" type="file" accept="application/json,.json" />
+            </div>
+          </details>
+          <details class="filter-menu" open>
+            <summary>搜索与筛选</summary>
+            <div class="filter-bar">
+              <input id="searchInput" type="search" placeholder="搜索任务名称或备注…" />
+              <select id="filterLegendSelect"><option value="">全部任务</option></select>
+              <button id="clearFilterBtn">清除筛选</button>
+            </div>
+          </details>
         </div>
 
         <div id="monthView">
@@ -859,6 +938,16 @@
     const importJsonInput = document.getElementById("importJsonInput");
     const historyModal = document.getElementById("historyModal");
     const historyList = document.getElementById("historyList");
+    const mobileMenuQuery = window.matchMedia("(max-width: 760px)");
+
+    function syncResponsiveMenus(event) {
+      document.querySelectorAll(".actions-menu, .filter-menu").forEach((menu) => {
+        menu.open = !event.matches;
+      });
+    }
+
+    syncResponsiveMenus(mobileMenuQuery);
+    mobileMenuQuery.addEventListener("change", syncResponsiveMenus);
 
     document.getElementById("monthViewBtn").addEventListener("click", () => {
       currentView = "month";
