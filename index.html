@@ -148,6 +148,21 @@
       font-weight: 700;
     }
 
+    .month-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .month-average-summary {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
     .weekday-row,
     .calendar-grid {
       display: grid;
@@ -360,6 +375,20 @@
       background: transparent;
       border-radius: 8px;
       cursor: pointer;
+    }
+
+    .legend-color::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+
+    .legend-color::-webkit-color-swatch {
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 8px;
+    }
+
+    .legend-color::-moz-color-swatch {
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 8px;
     }
 
     .legend-main {
@@ -671,7 +700,9 @@
         gap: 6px;
       }
 
-      .calendar-panel > .panel-title > .month-title { grid-column: 1 / -1; }
+      .calendar-panel > .panel-title > .month-heading { grid-column: 1 / -1; }
+
+      .month-average-summary { font-size: 10px; }
 
       .weekday-row,
       .calendar-grid { gap: 3px; }
@@ -779,7 +810,6 @@
     <div class="topbar">
       <div class="title">
         <h1>共享挑战日历</h1>
-        <p>支持月视图、年视图、备注、统计、导出和 Firebase 实时同步。所有打开同一链接的人看到的是同一份数据，也都可以直接修改。</p>
       </div>
 
       <div class="toolbar">
@@ -797,7 +827,10 @@
     <div class="layout">
       <div class="panel calendar-panel">
         <div class="panel-title">
-          <div class="month-title" id="mainTitle"></div>
+          <div class="month-heading">
+            <div class="month-title" id="mainTitle"></div>
+            <div class="month-average-summary" id="monthAverageSummary"></div>
+          </div>
           <details class="actions-menu" open>
             <summary>数据工具</summary>
             <div class="sub-toolbar">
@@ -863,7 +896,7 @@
 
         <div class="average-panel">
           <div class="average-header">
-            <strong>本月完成频率</strong>
+            <strong id="frequencyPanelTitle">月度完成频率</strong>
             <button id="chooseAverageTasksBtn" class="link-btn">选择任务</button>
           </div>
           <div class="small" id="averageRangeText"></div>
@@ -924,7 +957,7 @@
   <div class="modal" id="averageModal">
     <div class="modal-card">
       <div class="selected-date">选择频率统计任务</div>
-      <div class="small">可多选；显示本月 1 日到今天平均多少天完成一次。</div>
+      <div class="small">可多选；统计会跟随当前查看的月份或年份自动变化。</div>
       <div class="option-grid" id="averageOptionGrid"></div>
       <div class="modal-actions">
         <button id="saveAverageTasksBtn" class="primary">保存选择</button>
@@ -981,6 +1014,7 @@
     let pendingAverageLegendIds = [];
 
     const mainTitle = document.getElementById("mainTitle");
+    const monthAverageSummary = document.getElementById("monthAverageSummary");
     const calendarGrid = document.getElementById("calendarGrid");
     const yearGrid = document.getElementById("yearGrid");
     const legendList = document.getElementById("legendList");
@@ -1008,6 +1042,7 @@
     const historyList = document.getElementById("historyList");
     const averageList = document.getElementById("averageList");
     const averageRangeText = document.getElementById("averageRangeText");
+    const frequencyPanelTitle = document.getElementById("frequencyPanelTitle");
     const averageModal = document.getElementById("averageModal");
     const averageOptionGrid = document.getElementById("averageOptionGrid");
     const mobileMenuQuery = window.matchMedia("(max-width: 760px)");
@@ -2001,42 +2036,89 @@
 
     function renderAverageStats() {
       const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      const elapsedDays = now.getDate();
-      const prefix = getMonthPrefix(year, month);
-      const todayKey = getDateKey(now);
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const isYearRange = currentView === "year";
+      let isFutureRange;
+      let elapsedDays;
+      let prefix;
+      let rangeEndKey;
+      let rangeDescription;
+      let periodLabel;
+
+      if (isYearRange) {
+        isFutureRange = year > now.getFullYear();
+        const isCurrentYear = year === now.getFullYear();
+        const daysInYear = new Date(year, 1, 29).getMonth() === 1 ? 366 : 365;
+        const currentDayOfYear = Math.floor(
+          (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(now.getFullYear(), 0, 1)) / 86400000
+        ) + 1;
+        elapsedDays = isFutureRange ? 0 : (isCurrentYear ? currentDayOfYear : daysInYear);
+        prefix = `${year}-`;
+        rangeEndKey = isFutureRange ? "" : (isCurrentYear ? getDateKey(now) : `${year}-12-31`);
+        rangeDescription = isFutureRange
+          ? `${year}年尚未开始`
+          : `1月1日—${isCurrentYear ? `${now.getMonth() + 1}月${now.getDate()}日` : "12月31日"}，共 ${elapsedDays} 天`;
+        periodLabel = `${year}年`;
+        frequencyPanelTitle.textContent = "年度完成频率";
+      } else {
+        const viewedMonthStart = new Date(year, month, 1);
+        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        isFutureRange = viewedMonthStart > currentMonthStart;
+        const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+        elapsedDays = isFutureRange
+          ? 0
+          : (isCurrentMonth ? now.getDate() : new Date(year, month + 1, 0).getDate());
+        prefix = getMonthPrefix(year, month);
+        rangeEndKey = elapsedDays > 0 ? getDateKey(new Date(year, month, elapsedDays)) : "";
+        rangeDescription = isFutureRange
+          ? `${year}年${month + 1}月尚未开始`
+          : `${month + 1}月1日—${month + 1}月${elapsedDays}日，共 ${elapsedDays} 天`;
+        periodLabel = `${month + 1}月`;
+        frequencyPanelTitle.textContent = "月度完成频率";
+      }
       const selectedIds = getAverageLegendIds();
 
-      averageRangeText.textContent = `${month + 1}月1日—${month + 1}月${elapsedDays}日，共 ${elapsedDays} 天`;
+      averageRangeText.textContent = rangeDescription;
       averageList.innerHTML = "";
+      monthAverageSummary.textContent = "";
 
       if (!selectedIds.length) {
         averageList.innerHTML = '<div class="small" style="margin-top:7px;">点击“选择任务”添加要观察的任务。</div>';
         return;
       }
 
+      const inlineParts = [];
       selectedIds.forEach((legendId) => {
         const legend = getLegendById(legendId);
         if (!legend) return;
         const count = Object.entries(state.entries).filter(([dateKey, entry]) => {
           return dateKey.startsWith(prefix)
-            && dateKey <= todayKey
+            && elapsedDays > 0
+            && dateKey <= rangeEndKey
             && getEntryLegendIds(entry).includes(legendId);
         }).length;
-        const daysPerCompletion = count > 0 ? elapsedDays / count : null;
+        const daysPerCompletion = count > 0 && elapsedDays > 0 ? elapsedDays / count : null;
+        const frequencyText = isFutureRange
+          ? "尚未开始"
+          : (daysPerCompletion === null ? "尚未完成" : `${daysPerCompletion.toFixed(2)}天/次`);
+        inlineParts.push(`${legend.label} ${frequencyText}`);
         const item = document.createElement("div");
         item.className = "average-item";
         item.innerHTML = `
           <div class="average-color" style="background:${legend.color}"></div>
           <div>
             <div style="font-size:12px;font-weight:700;">${escapeHtml(legend.label)}</div>
-            <div class="small">本月完成 ${count} 次</div>
+            <div class="small">${periodLabel}完成 ${count} 次</div>
           </div>
-          <div class="average-value">${daysPerCompletion === null ? "尚未完成" : `${daysPerCompletion.toFixed(2)} 天/次`}</div>
+          <div class="average-value">${isFutureRange ? "尚未开始" : (daysPerCompletion === null ? "尚未完成" : `${daysPerCompletion.toFixed(2)} 天/次`)}</div>
         `;
         averageList.appendChild(item);
       });
+
+      if (inlineParts.length) {
+        monthAverageSummary.textContent = `（${inlineParts.join(" · ")}）`;
+      }
     }
 
     function renderViewToggle() {
