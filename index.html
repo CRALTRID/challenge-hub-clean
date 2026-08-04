@@ -420,11 +420,19 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
+      width: 54px;
     }
 
     .link-btn {
-      padding: 6px 8px;
-      font-size: 11px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .legend-actions button {
+      width: 100%;
+      min-width: 0;
+      padding: 8px 6px;
+      font-size: 12px;
     }
 
     .legend-tools {
@@ -1797,7 +1805,7 @@
         const linkBtn = document.createElement("button");
         linkBtn.type = "button";
         linkBtn.className = "link-btn";
-        linkBtn.textContent = "设置关联";
+        linkBtn.textContent = "关联";
 
         const deleteBtn = document.createElement("button");
         deleteBtn.type = "button";
