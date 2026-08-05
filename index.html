@@ -299,6 +299,32 @@
       color: #111827;
     }
 
+    .entry-label-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .entry-label-row .entry-label {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .linked-marks {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 0 0 auto;
+    }
+
+    .linked-mark {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+    }
+
     .entry-more {
       color: var(--muted);
       font-size: 10px;
@@ -417,6 +443,31 @@
       flex: 0 1 6px;
       border-radius: 999px;
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+    }
+
+    .mini-linked-groups {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      bottom: 2px;
+      display: flex;
+      gap: 1px;
+      z-index: 2;
+    }
+
+    .mini-linked-group {
+      flex: 1;
+      min-width: 0;
+      min-height: 6px;
+      display: flex;
+      justify-content: center;
+      gap: 1px;
+    }
+
+    .mini-linked-group .mini-dot {
+      width: 5px;
+      height: 5px;
+      flex-basis: 5px;
     }
 
     .legend-list {
@@ -605,6 +656,40 @@
       animation: modalCardEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
+    .modal.show.closing {
+      animation: modalBackdropExit 0.18s ease both;
+    }
+
+    .modal.show.closing .modal-card {
+      animation: modalCardExit 0.18s ease both;
+    }
+
+    button.saving {
+      pointer-events: none;
+      opacity: 0.78;
+    }
+
+    button.saving::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 6px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 999px;
+      animation: spin 0.65s linear infinite;
+      vertical-align: -1px;
+    }
+
+    .day.just-saved {
+      animation: savedPulse 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .day.just-cleared {
+      animation: clearedPulse 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
     .modal-card {
       width: 100%;
       max-width: 560px;
@@ -715,6 +800,30 @@
     @keyframes modalCardEnter {
       from { opacity: 0; transform: translateY(18px) scale(0.985); }
       to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes modalBackdropExit {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    @keyframes modalCardExit {
+      from { opacity: 1; transform: translateY(0) scale(1); }
+      to { opacity: 0; transform: translateY(12px) scale(0.99); }
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes savedPulse {
+      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+      35% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.28); }
+      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+
+    @keyframes clearedPulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      35% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.24); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -1144,12 +1253,16 @@
     let currentView = "month";
     let selectedDateKey = null;
     let selectedLegendIds = [];
+    let manualSelectedLegendIds = [];
+    let selectedAutoLegendIds = [];
     let linkingLegendId = null;
     let pendingLinkedLegendIds = [];
     let searchQuery = "";
     let filterLegendId = "";
     let pendingAverageLegendIds = [];
     let animateCalendarNextRender = true;
+    let pendingSavedDateKey = null;
+    let pendingClearedDateKey = null;
 
     const mainTitle = document.getElementById("mainTitle");
     const monthAverageSummary = document.getElementById("monthAverageSummary");
@@ -1190,6 +1303,8 @@
     const mainLayout = document.getElementById("mainLayout");
     const weekdayRow = document.getElementById("weekdayRow");
     const toggleSidePanelBtn = document.getElementById("toggleSidePanelBtn");
+    const saveNoteBtn = document.getElementById("saveNoteBtn");
+    const clearDayBtn = document.getElementById("clearDayBtn");
     const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const mobileMenuQuery = window.matchMedia("(max-width: 760px)");
 
@@ -1321,10 +1436,10 @@
       render();
     });
 
-    document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+    document.getElementById("closeModalBtn").addEventListener("click", closeModalWithAnimation);
 
     modal.addEventListener("click", (e) => {
-      if (e.target === modal) closeModal();
+      if (e.target === modal) closeModalWithAnimation();
     });
 
     document.getElementById("closeLinkModalBtn").addEventListener("click", closeLinkModal);
@@ -1341,29 +1456,60 @@
       render();
     });
 
-    document.getElementById("saveNoteBtn").addEventListener("click", async () => {
+    saveNoteBtn.addEventListener("click", async () => {
       if (!selectedDateKey) return;
+      const dateKey = selectedDateKey;
       const oldEntry = state.entries[selectedDateKey] || {};
       const previousEntry = state.entries[selectedDateKey] ? structuredClone(state.entries[selectedDateKey]) : null;
       const entry = {
         ...oldEntry,
         legendId: selectedLegendIds[0] || null,
         legendIds: [...selectedLegendIds],
+        autoLegendIds: [...selectedAutoLegendIds],
         note: noteInput.value.trim()
       };
       state.entries[selectedDateKey] = entry;
-      await saveDateEntry(selectedDateKey, entry, previousEntry);
-      closeModal();
+      pendingSavedDateKey = dateKey;
+      saveNoteBtn.disabled = true;
+      saveNoteBtn.classList.add("saving");
+      saveNoteBtn.textContent = "保存中…";
+      const saved = await saveDateEntry(dateKey, entry, previousEntry);
+      saveNoteBtn.classList.remove("saving");
+      if (saved) {
+        saveNoteBtn.textContent = "已保存 ✓";
+        render();
+        setTimeout(() => { pendingSavedDateKey = null; }, 700);
+        setTimeout(() => closeModalWithAnimation(), 160);
+      } else {
+        pendingSavedDateKey = null;
+        saveNoteBtn.disabled = false;
+        saveNoteBtn.textContent = "保存当天记录";
+      }
     });
 
-    document.getElementById("clearDayBtn").addEventListener("click", async () => {
+    clearDayBtn.addEventListener("click", async () => {
       if (!selectedDateKey) return;
       if (!confirm(`确定要清空 ${formatDateKey(selectedDateKey)} 的记录吗？`)) return;
       const dateKey = selectedDateKey;
       const previousEntry = state.entries[dateKey] ? structuredClone(state.entries[dateKey]) : null;
       delete state.entries[dateKey];
-      await deleteDateEntry(dateKey, previousEntry);
-      closeModal();
+      pendingClearedDateKey = dateKey;
+      clearDayBtn.disabled = true;
+      clearDayBtn.classList.add("saving");
+      clearDayBtn.textContent = "清空中…";
+      const cleared = await deleteDateEntry(dateKey, previousEntry);
+      clearDayBtn.classList.remove("saving");
+      if (cleared) {
+        clearDayBtn.textContent = "已清空 ✓";
+        render();
+        setTimeout(() => { pendingClearedDateKey = null; }, 700);
+        setTimeout(() => closeModalWithAnimation(), 160);
+      } else {
+        if (previousEntry) state.entries[dateKey] = previousEntry;
+        pendingClearedDateKey = null;
+        clearDayBtn.disabled = false;
+        clearDayBtn.textContent = "清空这一天";
+      }
     });
 
     function getMonthPrefix(year, month) {
@@ -1457,6 +1603,44 @@
         getLinkedLegendIds(getLegendById(id)).forEach((linkedId) => queue.push(linkedId));
       }
       return result;
+    }
+
+    function getEntryAutoLegendIds(entry) {
+      const entryIds = getEntryLegendIds(entry);
+      if (!entryIds.length) return [];
+      if (Array.isArray(entry?.autoLegendIds)) {
+        const storedAutoIds = [...new Set(entry.autoLegendIds.filter((id) => entryIds.includes(id)))];
+        return storedAutoIds.length >= entryIds.length ? storedAutoIds.slice(1) : storedAutoIds;
+      }
+      const inferred = new Set();
+      entryIds.forEach((sourceId) => {
+        expandLinkedLegendIds([sourceId]).slice(1).forEach((linkedId) => {
+          if (entryIds.includes(linkedId)) inferred.add(linkedId);
+        });
+      });
+      const inferredIds = [...inferred];
+      return inferredIds.length >= entryIds.length ? inferredIds.filter((id) => id !== entryIds[0]) : inferredIds;
+    }
+
+    function getEntryManualLegendIds(entry) {
+      const autoIds = new Set(getEntryAutoLegendIds(entry));
+      return getEntryLegendIds(entry).filter((id) => !autoIds.has(id));
+    }
+
+    function getAutoLegendsForManual(manualLegendId, autoLegends) {
+      const linkedIds = new Set(expandLinkedLegendIds([manualLegendId]).slice(1));
+      return autoLegends.filter((legend) => linkedIds.has(legend.id));
+    }
+
+    function recomputeSelectedLegends() {
+      manualSelectedLegendIds = [...new Set(manualSelectedLegendIds.filter((id) => {
+        const legend = getLegendById(id);
+        return legend && !isLegendArchived(legend);
+      }))];
+      const expandedIds = expandLinkedLegendIds(manualSelectedLegendIds);
+      const manualSet = new Set(manualSelectedLegendIds);
+      selectedAutoLegendIds = expandedIds.filter((id) => !manualSet.has(id));
+      selectedLegendIds = [...manualSelectedLegendIds, ...selectedAutoLegendIds];
     }
 
     function setSaveStatus(message, isError = false) {
@@ -1838,6 +2022,9 @@
         const remainingIds = getEntryLegendIds(entry).filter((id) => id !== legendId);
         entry.legendIds = remainingIds;
         entry.legendId = remainingIds[0] || null;
+        if (Array.isArray(entry.autoLegendIds)) {
+          entry.autoLegendIds = entry.autoLegendIds.filter((id) => id !== legendId);
+        }
       });
 
       state.legends.forEach((legendItem) => {
@@ -1944,10 +2131,12 @@
           updatedAt
         });
         setSaveStatus("已保存，其他设备会自动同步");
+        return true;
       } catch (err) {
         console.error("saveDateEntry failed:", err);
         setSaveStatus("保存失败，请检查网络或 Firebase 配置。", true);
         alert("保存失败，请检查网络或 Firebase 配置。");
+        return false;
       }
     }
 
@@ -1963,10 +2152,12 @@
           updatedAt
         });
         setSaveStatus("已清空，其他设备会自动同步");
+        return true;
       } catch (err) {
         console.error("deleteDateEntry failed:", err);
         setSaveStatus("清空失败，请检查网络或 Firebase 配置。", true);
         alert("清空失败，请检查网络或 Firebase 配置。");
+        return false;
       }
     }
 
@@ -2025,6 +2216,8 @@
 
       const currentEntry = getEntry(dateKey);
       selectedLegendIds = getEntryLegendIds(currentEntry);
+      selectedAutoLegendIds = getEntryAutoLegendIds(currentEntry);
+      manualSelectedLegendIds = getEntryManualLegendIds(currentEntry);
       noteInput.value = currentEntry?.note || "";
       lastUpdatedText.textContent = `最近更新：${formatTimestamp(state.updatedAt)}`;
 
@@ -2037,6 +2230,7 @@
 
       state.legends.filter((legend) => !isLegendArchived(legend)).forEach((legend) => {
         const isSelected = selectedLegendIds.includes(legend.id);
+        const isAutoSelected = selectedAutoLegendIds.includes(legend.id);
         const linkedNames = getLinkedLegendIds(legend).map((id) => getLegendById(id)?.label).filter(Boolean);
         const item = document.createElement("div");
         item.className = `option${isSelected ? " selected" : ""}`;
@@ -2046,19 +2240,19 @@
             <div style="font-weight:700;">${escapeHtml(legend.label)}</div>
             <div class="small">总共 ${getLegendTotalCount(legend.id)} 次${linkedNames.length ? ` · 自动带上 ${escapeHtml(linkedNames.join("、"))}` : ""}</div>
           </div>
-          <div class="option-check">${isSelected ? "已选择" : "选择"}</div>
+          <div class="option-check">${isAutoSelected ? "自动关联" : (isSelected ? "已选择" : "选择")}</div>
         `;
 
         item.addEventListener("click", () => {
-          const selectedIndex = selectedLegendIds.indexOf(legend.id);
-          if (selectedIndex >= 0) {
-            selectedLegendIds.splice(selectedIndex, 1);
+          const manualIndex = manualSelectedLegendIds.indexOf(legend.id);
+          if (manualIndex >= 0) {
+            manualSelectedLegendIds.splice(manualIndex, 1);
+          } else if (isAutoSelected) {
+            manualSelectedLegendIds.push(legend.id);
           } else {
-            selectedLegendIds = [...new Set([
-              ...selectedLegendIds,
-              ...expandLinkedLegendIds([legend.id])
-            ])];
+            manualSelectedLegendIds.push(legend.id);
           }
+          recomputeSelectedLegends();
           renderModalOptions();
         });
 
@@ -2067,9 +2261,23 @@
     }
 
     function closeModal() {
-      modal.classList.remove("show");
+      modal.classList.remove("show", "closing");
       selectedDateKey = null;
       selectedLegendIds = [];
+      manualSelectedLegendIds = [];
+      selectedAutoLegendIds = [];
+      saveNoteBtn.disabled = false;
+      saveNoteBtn.classList.remove("saving");
+      saveNoteBtn.textContent = "保存当天记录";
+      clearDayBtn.disabled = false;
+      clearDayBtn.classList.remove("saving");
+      clearDayBtn.textContent = "清空这一天";
+    }
+
+    function closeModalWithAnimation() {
+      if (!modal.classList.contains("show")) return;
+      modal.classList.add("closing");
+      setTimeout(closeModal, 180);
     }
 
     function getLegendTotalCount(legendId) {
@@ -2189,33 +2397,69 @@
 
         const dateKey = getDateKey(cellDate);
         const entry = getEntry(dateKey);
-        const legends = hasActiveFilter()
+        const visibleLegends = hasActiveFilter()
           ? getFilteredLegends(entry)
           : getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
+        const visibleLegendIds = new Set(visibleLegends.map((legend) => legend.id));
+        let manualLegends = getEntryManualLegendIds(entry)
+          .map(getLegendById).filter((legend) => legend && visibleLegendIds.has(legend.id));
+        let autoLegends = getEntryAutoLegendIds(entry)
+          .map(getLegendById).filter((legend) => legend && visibleLegendIds.has(legend.id));
+        if (!manualLegends.length && visibleLegends.length && !autoLegends.length) {
+          manualLegends = visibleLegends;
+        }
 
         const day = document.createElement("div");
         day.className = "day";
         day.style.setProperty("--i", i);
         if (otherMonth) day.classList.add("other-month");
         if (dateKey === todayKey) day.classList.add("today");
+        if (dateKey === pendingSavedDateKey) day.classList.add("just-saved");
+        if (dateKey === pendingClearedDateKey) day.classList.add("just-cleared");
         if (entry && hasActiveFilter() && !entryMatchesFilter(entry)) day.classList.add("filtered-out");
         day.innerHTML = `<div class="date-number">${dayNum}</div>`;
 
-        if (legends.length) {
+        if (manualLegends.length || autoLegends.length) {
           const list = document.createElement("div");
           list.className = "entry-list";
-          legends.slice(0, 3).forEach((legend) => {
+          manualLegends.slice(0, 3).forEach((legend) => {
+            const row = document.createElement("div");
+            row.className = "entry-label-row";
             const label = document.createElement("div");
             label.className = "entry-label";
             label.style.background = legend.color;
             label.textContent = legend.label;
-            list.appendChild(label);
+            row.appendChild(label);
+            const rowAutoLegends = getAutoLegendsForManual(legend.id, autoLegends);
+            if (rowAutoLegends.length) {
+              const marks = document.createElement("div");
+              marks.className = "linked-marks";
+              rowAutoLegends.forEach((autoLegend) => {
+                const mark = document.createElement("span");
+                mark.className = "linked-mark";
+                mark.style.background = autoLegend.color;
+                mark.title = `自动关联：${autoLegend.label}`;
+                marks.appendChild(mark);
+              });
+              row.appendChild(marks);
+            }
+            list.appendChild(row);
           });
-          if (legends.length > 3) {
+          if (manualLegends.length > 3) {
             const more = document.createElement("div");
             more.className = "entry-more";
-            more.textContent = `还有 ${legends.length - 3} 项`;
+            more.textContent = `还有 ${manualLegends.length - 3} 项`;
             list.appendChild(more);
+          } else if (!manualLegends.length && autoLegends.length) {
+            const marks = document.createElement("div");
+            marks.className = "linked-marks";
+            autoLegends.forEach((autoLegend) => {
+              const mark = document.createElement("span");
+              mark.className = "linked-mark";
+              mark.style.background = autoLegend.color;
+              marks.appendChild(mark);
+            });
+            list.appendChild(marks);
           }
           day.appendChild(list);
         }
@@ -2282,16 +2526,24 @@
         const date = new Date(year, month, d);
         const dateKey = getDateKey(date);
         const entry = getEntry(dateKey);
-        const legends = hasActiveFilter()
+        const visibleLegends = hasActiveFilter()
           ? getFilteredLegends(entry)
           : getEntryLegendIds(entry).map(getLegendById).filter(Boolean);
+        const visibleLegendIds = new Set(visibleLegends.map((legend) => legend.id));
+        let manualLegends = getEntryManualLegendIds(entry)
+          .map(getLegendById).filter((legend) => legend && visibleLegendIds.has(legend.id));
+        const autoLegends = getEntryAutoLegendIds(entry)
+          .map(getLegendById).filter((legend) => legend && visibleLegendIds.has(legend.id));
+        if (!manualLegends.length && visibleLegends.length && !autoLegends.length) {
+          manualLegends = visibleLegends;
+        }
 
         const cell = document.createElement("div");
         cell.className = "mini-day";
         if (entry && hasActiveFilter() && !entryMatchesFilter(entry)) cell.classList.add("filtered-out");
-        if (legends.length) {
+        if (manualLegends.length) {
           cell.classList.add("has-entry");
-          cell.style.setProperty("--event-border", buildEqualBorderGradient(legends));
+          cell.style.setProperty("--event-border", buildEqualBorderGradient(manualLegends));
         }
 
         const number = document.createElement("div");
@@ -2299,16 +2551,22 @@
         number.textContent = d;
         cell.appendChild(number);
 
-        if (legends.length) {
-          const dots = document.createElement("div");
-          dots.className = "mini-dots";
-          legends.forEach((legend) => {
-            const dot = document.createElement("span");
-            dot.className = "mini-dot";
-            dot.style.background = legend.color;
-            dots.appendChild(dot);
+        if (manualLegends.length && autoLegends.length) {
+          const groups = document.createElement("div");
+          groups.className = "mini-linked-groups";
+          manualLegends.forEach((manualLegend) => {
+            const group = document.createElement("div");
+            group.className = "mini-linked-group";
+            getAutoLegendsForManual(manualLegend.id, autoLegends).forEach((autoLegend) => {
+              const dot = document.createElement("span");
+              dot.className = "mini-dot";
+              dot.style.background = autoLegend.color;
+              dot.title = `${manualLegend.label} → ${autoLegend.label}`;
+              group.appendChild(dot);
+            });
+            groups.appendChild(group);
           });
-          cell.appendChild(dots);
+          cell.appendChild(groups);
         }
 
         cell.addEventListener("click", (e) => {
